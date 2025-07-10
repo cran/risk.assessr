@@ -1,0 +1,38 @@
+Package: risk.assessr
+Title: Assessing Package Risk Metrics
+Version: 2.0.0
+Authors@R: c(
+    person("Edward", "Gillian", , "edward.gillian-ext@sanofi.com", role = c("cre", "aut"), comment = c(ORCID = "0000-0003-2732-5107")),
+    person("Hugo", "Bottois", , "hugo.bottois@sanofi.com", role = "aut", comment = c(ORCID = "0000-0003-4674-0875")),
+    person("Paulin", "Charliquart", , "paulin.charliquart@sanofi.com", role = "aut"),
+    person("Andre", "Couturier", , "andre.couturier@sanofi.com", role = "aut"),
+    person("Sanofi", role = c("cph", "fnd")))
+Description: Provides a structured approach to assess the quality and trustworthiness of R packages 
+    (documentation, testing, popularity, dependencies), supporting informed decisions in production 
+    or research by highlighting strengths and potential risks in adoption or development.
+License: GPL (>= 2)
+URL: https://sanofi-public.github.io/risk.assessr/
+BugReports: https://github.com/Sanofi-Public/risk.assessr/issues
+Depends: R (>= 4.1.0)
+Imports: remotes, callr, checkmate, covr, desc, devtools, dplyr, fs,
+        methods, purrr, rcmdcheck, rlang, xml2, stringr, tidyr, utils,
+        curl, gh, jsonlite
+Suggests: forcats, glue, here, htmltools, kableExtra, knitr, magrittr,
+        openxlsx, readr, roxygen2, testthat (>= 3.0.0), tidyselect,
+        tools, rmarkdown, withr, mockery
+Encoding: UTF-8
+RoxygenNote: 7.3.2
+Config/testthat/edition: 3
+Config/build/clean-inst-doc: false
+VignetteBuilder: knitr
+NeedsCompilation: no
+Packaged: 2025-07-07 14:25:15 UTC; u1004798
+Author: Edward Gillian [cre, aut] (ORCID:
+    <https://orcid.org/0000-0003-2732-5107>),
+  Hugo Bottois [aut] (ORCID: <https://orcid.org/0000-0003-4674-0875>),
+  Paulin Charliquart [aut],
+  Andre Couturier [aut],
+  Sanofi [cph, fnd]
+Maintainer: Edward Gillian <edward.gillian-ext@sanofi.com>
+Repository: CRAN
+Date/Publication: 2025-07-10 15:20:02 UTC
