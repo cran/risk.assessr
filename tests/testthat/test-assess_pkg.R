@@ -4,8 +4,19 @@ test_that("running assess_pkg for test package in tar file - no notes", {
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
 
-  dp <- system.file("test-data", "test.package.0001_0.1.0.tar.gz",
-                    package = "risk.assessr")
+  # Copy test package to a temp file
+  dp_orig <- system.file("test-data", 
+                         "test.package.0001_0.1.0.tar.gz", 
+                         package = "risk.assessr")
+  dp <- tempfile(fileext = ".tar.gz")
+  file.copy(dp_orig, dp)
+  
+  # Defer cleanup of copied tarball
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  # Defer cleanup of unpacked source directory
+  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
+               envir = parent.frame())
 
   # Mock get_host_package to return a fixed response
   mock_get_host_package <- function(pkg_name, pkg_ver, pkg_source_path) {
@@ -134,8 +145,19 @@ test_that("running assess_pkg for test package in tar file - no exports", {
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
 
-  dp <- system.file("test-data", "test.package.0005_0.1.0.tar.gz",
-                    package = "risk.assessr")
+  # Copy test package to a temp file
+  dp_orig <- system.file("test-data", 
+                         "test.package.0005_0.1.0.tar.gz", 
+                         package = "risk.assessr")
+  dp <- tempfile(fileext = ".tar.gz")
+  file.copy(dp_orig, dp)
+  
+  # Defer cleanup of copied tarball
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  # Defer cleanup of unpacked source directory
+  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
+               envir = parent.frame())
 
   # Mock get_host_package to return a fixed response
   mock_get_host_package <- function(pkg_name, pkg_ver, pkg_source_path) {
@@ -352,6 +374,11 @@ test_that("running assess_pkg for test package fail suggest", {
   package_installed <- install_package_local(pkg_source_path)
   package_installed <- TRUE
   
+  # Defer cleanup: remove test package from temp dirs
+  withr::defer({
+    unlink(pkg_source_path, recursive = TRUE, force = TRUE)
+  })
+  
   if (package_installed == TRUE ) {
     
     rcmdcheck_args$path <- pkg_source_path
@@ -410,6 +437,11 @@ test_that("assess_pkg handles errors in check_suggested_exp_funcs correctly", {
   
   # Install package locally to ensure test works
   package_installed <- install_package_local(pkg_source_path)
+  
+  # Defer cleanup: remove test package from temp dirs
+  withr::defer({
+    unlink(pkg_source_path, recursive = TRUE, force = TRUE)
+  })
   
   if (package_installed) {
     rcmdcheck_args$path <- pkg_source_path

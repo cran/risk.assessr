@@ -1,3 +1,15 @@
+# risk.assessr 2.0.1
+
+## CRAN Note cleanup
+
+- added `withr::defer` and `unlink` to tests with these packages:
+
+  - `test.package.0001`
+  - `test.package.0005`
+  - `test.package.0006`
+  - `test.package.0009`
+  - `test.package.0010`
+
 # risk.assessr 2.0.0
 
 ## New Features
