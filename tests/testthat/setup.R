@@ -1,17 +1,3 @@
-# test weights
-
-weights_numeric <- c(
-  has_bug_reports_url = .2
-) 
-
-weights_numeric_prob <- c(
-  has_bug_reports_url = -.2
-)
-
-weights_non_numeric <- c(
-  has_bug_reports_url = ".2"
-)  
-
 # risk metrics for package 1
 risk_results_1 <- list(
   pkg_name = "synapser",
@@ -39,7 +25,7 @@ update_risk_results <- list(
   pkg_name = "synapser",
   pkg_version = "0.2.1",
   pkg_source_path = "/tmp/RtmpNpDlUz/temp_file_1fe56774aacc/synapser",
-  has_bug_reports_url = "", 
+  has_bug_reports_url = "",
   has_examples = "",
   has_maintainer = "",
   size_codebase = "",
@@ -114,11 +100,6 @@ type <- c(
 
 test_deps <- data.frame(package, type)
 
-# create overall risk scores to test risk profiles
-high_overall_risk_score <- .57
-medium_overall_risk_score <- .33
-low_overall_risk_score <- .24
-
 r = getOption("repos")
 r["CRAN"] = "http://cran.us.r-project.org"
 options(repos = r)
@@ -144,7 +125,6 @@ type <- c("Imports", "Suggests", "Suggests",
           ) 
 deps_df <- data.frame(package, type)
 
-
 # Define the generic function
 s3_function_no_body <- function(data, ...) {
   UseMethod("s3_function_no_body")
@@ -158,7 +138,7 @@ s3_function_no_body <- function(data, ...) {
 #' @export
 #' @importFrom magrittr %>%
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' library(dplyr)
 #' library(magrittr)
 #'
@@ -174,3 +154,5 @@ s3_function_no_body.dataframe_with_y <- function(data) {
   # class(data) <- "data.frame"  # Remove the custom class
   # dplyr::filter(data, row_number() <= 3) %>% select(y)
 }
+
+options(repos = c(CRAN = "https://cran.r-project.org"))

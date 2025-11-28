@@ -39,7 +39,6 @@ assess_examples <- function(pkg_name, pkg_source_path) {
  return(has_examples)
 }
 
-
 #' Assess exported functions to namespace
 #'
 #' @param data pkg source path
@@ -47,13 +46,12 @@ assess_examples <- function(pkg_name, pkg_source_path) {
 assess_exports <- function(data) {
   
   exports <- parseNamespaceFile(basename(data), dirname(data), mustExist = FALSE)$exports
-  
   if (length(exports) > 0) {
-    export_calc <- 1 - 1 / (1 + exp(-0.25 * (sqrt(length(exports)) - sqrt(25))))
+    export_calc <- 1
   } else {
     export_calc <- 0
   }
-}  
+} 
 
 #' assess_export_help
 #'
@@ -84,30 +82,6 @@ assess_export_help <- function(pkg_name, pkg_source_path) {
   return(export_help)
 }
 
-#' check for package creator
-#'
-#' @param pkg_name - package name
-#' @param pkg_source_path - path to package
-#'
-#' @return - logical - package creator exists - `FALSE` 
-#' @keywords internal
-get_pkg_creator_info <- function(pkg_name, pkg_source_path) {
-  
-  message(glue::glue("Checking for creator in {pkg_name}"))
-  
-  # create path to DESCRIPTION file
-  pkg_desc_path <- file.path(pkg_source_path, "DESCRIPTION")
-  
-  # check for package creator
-  pkg_creator <- desc::desc_get_author(role = "cre", 
-                                       file = pkg_desc_path)
-  
-  # Check if all elements are empty
-  check_pkg_creator <- all(sapply(pkg_creator, function(x) length(x) == 0))
-  
-  return(check_pkg_creator)
-}
-
 #' assess_description_file_elements
 #'
 #' @param pkg_name - name of the package 
@@ -120,72 +94,65 @@ assess_description_file_elements <- function(pkg_name, pkg_source_path) {
   desc_elements <- get_pkg_desc(pkg_source_path, fields = c(
                                                             "Package", 
                                                             "BugReports",
-                                                            "License",
                                                             "Maintainer",
                                                             "URL"
                                                             ))
   
   if (is.null(desc_elements$BugReports) | (is.na(desc_elements$BugReports))) {
     message(glue::glue("{pkg_name} does not have bug reports URL"))
-    has_bug_reports_url <- 0
+    has_bug_reports_url <- NULL
   } else {
     message(glue::glue("{pkg_name} has bug reports URL"))
-    has_bug_reports_url <- 1
+    has_bug_reports_url <- desc_elements$BugReports
   }
   
-  if (is.null(desc_elements$License) | (is.na(desc_elements$License))) {
-    message(glue::glue("{pkg_name} does not have a license"))
-    license <- 0
-  } else {
-    message(glue::glue("{pkg_name} has a license"))
-    license <- 1
-  }
-  
-  check_pkg_creator <- get_pkg_creator_info(pkg_name, pkg_source_path)
-  
-  if (!check_pkg_creator) {
-    message(glue::glue("{pkg_name} has a maintainer"))
-    has_maintainer <- 1
-  } else if (is.null(desc_elements$Maintainer) || 
-      (is.na(desc_elements$Maintainer)))  {
+  has_maintainer <- desc::desc_get_author(role = "cre",
+                                       file = pkg_source_path)
+  if (length(has_maintainer) == 0) {
+    has_maintainer <-  NULL
     message(glue::glue("{pkg_name} does not have a maintainer"))
-    has_maintainer <- 0
   } else {
     message(glue::glue("{pkg_name} has a maintainer"))
-    has_maintainer <- 1
+  }  
+  
+  if (is.null(desc_elements$URL) | (is.na(desc_elements$URL))) {
+    message(glue::glue("{pkg_name} does not have a website"))
+    has_website <- NULL
+  } else {
+    message(glue::glue("{pkg_name} has a website"))
+    has_website <- desc_elements$URL
   }
   
   if (is.null(desc_elements$URL) | (is.na(desc_elements$URL))) {
     message(glue::glue("{pkg_name} does not have a website"))
-    has_website <- 0
+    has_website <- NULL
   } else {
     message(glue::glue("{pkg_name} has a website"))
-    has_website <- 1
+    has_website <- desc_elements$URL
   }
   
   if (is.null(desc_elements$URL) | (is.na(desc_elements$URL))) {
     message(glue::glue("{pkg_name} does not have a source control"))
-    has_source_control <- 0
+    has_source_control <- NULL
   } else {
     patterns <- "github\\.com|bitbucket\\.org|gitlab\\.com|\\.ac\\.uk|\\.edu\\.au|bioconductor\\.org"
     url_matches <- grep(patterns, desc_elements$URL, value = TRUE)
     if (length(url_matches) == 0) {
       message(glue::glue("{pkg_name} does not have a source control"))
-      has_source_control <- 0
+      has_source_control <- NULL
     } else {
       message(glue::glue("{pkg_name} has a source control"))
-      has_source_control <- 1
+      has_source_control <- url_matches
     }
   }
   
   desc_elements_scores <- list(
     has_bug_reports_url = has_bug_reports_url,
-    license = license,
     has_maintainer = has_maintainer,
     has_website = has_website,
     has_source_control = has_source_control
   )
-  
+
   return(desc_elements_scores)
 }
 
@@ -290,11 +257,8 @@ assess_size_codebase <- function(pkg_source_path) {
     nloc <- sapply(files, count_lines)
     
     # sum the number of lines
-    nloc_total <- sum(nloc)
-  
-    # calculate size of the code base
-    size_codebase <- 1 - (1.5 / (nloc_total / 1e2 + 1.5))
-    
+    size_codebase <- sum(nloc)
+      
     return(size_codebase)
 }
 
@@ -354,7 +318,6 @@ doc_riskmetric <- function(pkg_name, pkg_ver, pkg_source_path) {
     export_help = export_help,
     has_bug_reports_url = desc_elements$has_bug_reports_url,
     has_source_control = desc_elements$has_source_control,
-    license = desc_elements$license,
     has_maintainer = desc_elements$has_maintainer,
     has_website = desc_elements$has_website,
     size_codebase = size_codebase,
@@ -396,16 +359,16 @@ get_pkg_author <- function(pkg_name, pkg_source_path) {
     pkg_creator <- desc::desc_get_author(role = "cre",
                                          file = pkg_desc_path)
     
-    if (length(pkg_creator) == 0) pkg_creator <-  "No package maintainer found"
+    if (length(pkg_creator) == 0) pkg_creator <-  NULL
 
     # check for package funder
     pkg_fnd <- desc::desc_get_author(role = "fnd",
                                      file = pkg_desc_path)
-    if (length(pkg_fnd) == 0) pkg_fnd <- "No package foundation found"
+    if (length(pkg_fnd) == 0) pkg_fnd <- NULL
 
     # check for package authors
     pkg_author <- desc::desc_get_authors(file = pkg_desc_path)
-    if (length(pkg_author) == 0) pkg_author <- "No package author found"
+    if (length(pkg_author) == 0) pkg_author <- NULL
 
     # Combine all elements into a list for return
     result <- list(
@@ -436,15 +399,38 @@ get_pkg_license <- function(pkg_name, pkg_source_path) {
   if (d$has_fields("License")) {
     License <- d$get_list("License")
   } else {
-    License <- "No package license found"
+    License <- NULL
   }  
 
   return(License)
 }
 
-
-
-
-
+#' Clean and normalize license names
+#'
+#' Splits a license string on commas, plus signs, or pipes,
+#' trims whitespace, removes trailing noise like "file LICENSE",
+#' and normalizes each part to uppercase letters only.
+#'
+#' @param x A character string containing license information.
+#'
+#' @return A character vector of normalized license names.
+#'
+#' @keywords internal
+clean_license <- function(x) {
+  parts <- unlist(strsplit(x, "[,+|]"))
+  base_license_names <- c()
+  
+  for (part in parts) {
+    part <- trimws(part)
+    part <- gsub("\\b(file\\s+)?license\\b.*", "", part, ignore.case = TRUE)
+    # FIXED: do toupper AFTER keeping A-Za-z
+    normalized <- toupper(gsub("[^A-Za-z]", "", part))
+    if (nchar(normalized) > 0) {
+      base_license_names <- c(base_license_names, normalized)
+    }
+  }
+  
+  return(base_license_names)
+}
 
 

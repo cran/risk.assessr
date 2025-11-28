@@ -12,12 +12,14 @@ check_and_fetch_cran_package(package_name, package_version = NULL)
 \item{package_version}{An optional character string specifying the version of the package to fetch. Defaults to `NULL`.}
 }
 \value{
-A list containing:
-  - `package_url`: URL to download the package tarball.
-  - `last_version`: Latest version available
-  - `version`: The requested version of the package (or `NULL` if not specified).
-  - `all_versions`: A character vector of all available package versions
-  - `error`: If the package or version is not found, an error message is included.
+A list with one of the following structures:
+
+\describe{
+  \item{package_url}{Character string; the URL to download the package tarball.}
+  \item{last_version}{A named list with \code{version} and \code{date} for the latest available version.}
+  \item{version}{Character string; the requested version (or \code{NULL} if not specified).}
+  \item{all_versions}{A list of named lists, each with \code{version} and \code{date}, representing all available versions.}
+}
 }
 \description{
 This function checks if a package exists on CRAN and retrieves the corresponding package URL and version details.
@@ -29,4 +31,5 @@ If a specific version is not provided, the latest version is used.
 result <- check_and_fetch_cran_package("ggplot2", package_version = "3.3.5")
 print(result)
 }
+
 }

@@ -14,8 +14,9 @@ test_that("install_package_local works correctly", {
   # Clean up
   withr::defer(unlink(pkg_source_path, recursive = TRUE))  # Test directory cleanup
   
-  # Attempt to unload the namespace 
+  # Attempt to unload the namespace without checking installed.packages()
   try(unloadNamespace("test.package.0001"), silent = TRUE)
+  
 })
 
 
@@ -38,7 +39,7 @@ test_that("install_package_local handles errors correctly", {
 })
 
 # Mock function for remotes::install_local
-mock_install_local <- function(pkg_source_path, upgrade, force, quiet, INSTALL_opts) {
+mock_install_local <- function(pkg_source_path, dependencies, upgrade, force, quiet, INSTALL_opts) {
   message(glue::glue("{basename(pkg_source_path)} installed locally"))
 }
 

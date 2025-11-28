@@ -43,22 +43,11 @@
 #' options(old)
 #' }
 #' @export
-#'
 assess_pkg <- function(
     pkg_source_path,
     rcmdcheck_args,
     covr_timeout = Inf
 ) {
-  
-  old_options <- options()
-  old_wd <- getwd()
-  
-  # Ensure cleanup on exit
-  on.exit({
-    options(old_options)
-    setwd(old_wd)
-  }, add = TRUE)
-  
   # record covr tests
   options(covr.record_tests = TRUE)
   
@@ -78,34 +67,64 @@ assess_pkg <- function(
   
   # Get package name and version
   pkg_desc <- get_pkg_desc(pkg_source_path, 
-                           fields = c("Package", 
-                                      "Version"))
+                                               fields = c("Package", 
+                                                          "Version"))
   pkg_name <- pkg_desc$Package
   pkg_ver <- pkg_desc$Version
   pkg_name_ver <- paste0(pkg_name, "_", pkg_ver)
-  
+
   metadata <- get_risk_metadata()
-  
-  results <- create_empty_results(pkg_name, pkg_ver, pkg_source_path,metadata)
-  
+  results <- create_empty_results(pkg_name, pkg_ver, pkg_source_path, metadata)
   doc_scores <- doc_riskmetric(pkg_name, pkg_ver, pkg_source_path)
   
-  results <- update_results_doc_scores(results, doc_scores)
-  # run R code coverage
-  covr_list <- run_coverage(
-    pkg_source_path,  # must use untarred package dir
-    covr_timeout
-  )
+  # doc data
+  results$has_bug_reports_url <- doc_scores$has_bug_reports_url
+  results$license <- doc_scores$license
+  results$has_examples <- doc_scores$has_examples
+  results$has_maintainer <- doc_scores$has_maintainer
+  results$size_codebase <- doc_scores$size_codebase 
+  results$has_news <- doc_scores$has_news
+  results$has_source_control <- doc_scores$has_source_control
+  results$has_vignettes <- doc_scores$has_vignettes
+  results$has_website <- doc_scores$has_website
+  results$news_current <- doc_scores$news_current
+  results$export_help <- doc_scores$export_help 
   
+  test_pkg_data <- check_pkg_tests_and_snaps(pkg_source_path)
+  results$tests <- test_pkg_data
+  
+  if (test_pkg_data$has_testthat || test_pkg_data$has_testit) {
+    
+    covr_list <- run_coverage(
+      pkg_source_path,  
+      covr_timeout
+    )    
+  } else {
+    message("No testthat or testit configuration")
+    covr_list <- list(
+      total_cov = 0,
+      res_cov = list(
+        name = pkg_name,
+        coverage = list(
+          filecoverage = matrix(0, nrow = 1, dimnames = list("No functions tested")),
+          totalcoverage = 0
+        ),
+        errors = "No testthat or testit configuration",
+        notes = NA
+      )
+    )
+    
+  }
+    
   # add total coverage to results
   results$covr <- covr_list$total_cov
   
   if (is.na(results$covr) | results$covr == 0L) {
     #  create empty traceability matrix
-    tm <- create_empty_tm(pkg_name)
+    tm_list <- create_empty_tm(pkg_name)
   } else {
     #  create traceability matrix
-    tm <- create_traceability_matrix(pkg_name, 
+    tm_list <- create_traceability_matrix(pkg_name, 
                                      pkg_source_path,
                                      covr_list$res_cov) 
   }
@@ -116,14 +135,12 @@ assess_pkg <- function(
   # add rcmd check score to results
   results$check <- check_list$check_score
   
-  deps_list <- calc_dependencies(pkg_source_path)
-  
-  results$dep_score <- deps_list$dep_score
+  deps <- get_dependencies(pkg_source_path)
   
   # tryCatch to allow for continued processing of risk metric data
   results$suggested_deps <- tryCatch(
     withCallingHandlers(
-      check_suggested_exp_funcs(pkg_name, pkg_source_path, deps_list$deps),
+      check_suggested_exp_funcs(pkg_name, pkg_source_path, deps),
       error = function(e) {
         results$suggested_deps <<- rbind(results$suggested_deps, data.frame(
           source = pkg_name,
@@ -141,21 +158,10 @@ assess_pkg <- function(
     }
   )
   
-  revdeps_list <- calc_reverse_dependencies(pkg_source_path)
-  
-  results$rev_deps <- revdeps_list$rev_deps
-  
-  results$revdep_score <- revdeps_list$revdep_score
-  
   results$export_calc <- assess_exports(pkg_source_path)
-  
-  # calculate risk score with user defined metrics
-  results$overall_risk_score <- calc_overall_risk_score(results, default_weights = FALSE)
-  
-  # calculate risk profile with user defined thresholds
-  results$risk_profile <- calc_risk_profile(results$overall_risk_score)
-  
-  results$dependencies <- risk.assessr::get_session_dependencies(deps_list$deps)
+
+  # dependencies
+  results$dependencies <- risk.assessr::get_session_dependencies(deps)
   
   # author
   pkg_author <- get_pkg_author(pkg_name, pkg_source_path)
@@ -169,57 +175,94 @@ assess_pkg <- function(
   pkg_host <- get_host_package(pkg_name, pkg_ver, pkg_source_path)
   results$host <- pkg_host
   
-  if (!is.null(pkg_host$github_links) && pkg_host$github_links != "No GitHub link found") {  
-    owner <- sub("https://github.com/([^/]+)/.*", "\\1", pkg_host$github_links)
-  } else {
-    owner <- NA
-  }
-  
+  owner <- get_repo_owner(pkg_host$github_links, pkg_name)
   
   # get github Data
   github_data <- get_github_data(owner, pkg_name)
   results$github_data <- github_data
-  
-  download_list <- list("total_download" = get_package_download(pkg_name, "grand-total"),
-                        "last_month_download" = get_package_download(pkg_name, "last-month")
+
+  download_list <- list("total_download" = get_cran_total_downloads(pkg_name),
+                        "last_month_download" = get_cran_total_downloads(pkg_name, months=1)
   )
   
   results$download <- download_list
   
-  # Get version
-  version_info <- NULL
+  # Get versions
+  version_info <- list("all_versions" = NULL,
+                       "last_version" =  NULL)  
   
-  if (pkg_host$cran != "No CRAN link found") {
+  if (!is.null(pkg_host$cran_links)) {
+    
     result_cran <- check_and_fetch_cran_package(pkg_name, pkg_ver)
+
+    version_info <- list("all_versions" = result_cran$all_versions,
+                          "last_version" =  result_cran$last_version)
     
-    version_info <- list("available_version" = result_cran$all_versions,
-                         "last_version" =  result_cran$last_version)
-    
-  } else if (pkg_host$bioconductor_links != "No Bioconductor link found") {
+    revdeps_list <- get_reverse_dependencies(pkg_source_path)
+    results$rev_deps <- revdeps_list
+        
+  } else if (!is.null(pkg_host$bioconductor_links)) {
     
     html_content <- fetch_bioconductor_releases()
     release_data <- parse_bioconductor_releases(html_content)
     result_bio <- get_bioconductor_package_url(pkg_name, pkg_ver, release_data)
     
-    available_version <- result_bio$all_versions
+    all_versions <- result_bio$all_versions
     last_version <- result_bio$last_version
     bioconductor_version_package <- result_bio$bioconductor_version_package
     
-    version_info <- list("available_version" = available_version,
+    version_info <- list("all_versions" = all_versions,
                          "last_version" =  last_version,
                          "bioconductor_version_package" = bioconductor_version_package)
+    
+    
+    results$rev_deps <- bioconductor_reverse_deps(pkg_name, version = bioconductor_version_package)
+    
+  }
+  
+  all_versions <- version_info$all_versions
+  last_version <- version_info$last_version
+
+  if (!is.null(all_versions)) {
+
+    index <- which(sapply(all_versions, function(x) x$version == pkg_ver))
+    
+    if (length(index) == 0) {
+      index <- length(all_versions)
+    }
+    
+    current_date <- as.Date(all_versions[[index]]$date)
+    last_date <- as.Date(last_version$date)
+    
+    difference_months <- length(seq(current_date, last_date, by = "month")) - 1
+    version_info$difference_version_months <- difference_months
+    
+  } else {
+    version_info$difference_version_months <- NA
   }
   
   results$version_info <- version_info
   
-  # convert NAs and NANs to zero
+  # this allows for packages not on CRAN or bioconductor to be processed
+  # Check if rev_deps is NULL or contains only empty strings
+  if (is.null(results$rev_deps) || all(results$rev_deps == "")) {
+    results$rev_deps <- 0
+  }
+  
+  
+  # # Replace empty string revdep_score with 0
+  # if (results$revdep_score == "") {
+  #   results$revdep_score <- 0
+  # }
+  
   results <- rapply( results, f=function(x) ifelse(is.nan(x),0,x), how="replace" )	  
   results <- rapply( results, f=function(x) ifelse(is.na(x),0,x), how="replace" )
   
   return(list(
-    results = results,
-    covr_list = covr_list,
-    tm = tm,
-    check_list = check_list
-  ))
+              results = results,
+              covr_list = covr_list,
+              tm_list = tm_list,
+              check_list = check_list,
+              risk_analysis = get_risk_analysis(results)
+              ))
 }

@@ -23,7 +23,7 @@ version, source package URL, and archived versions if available.
 }
 \examples{
 \dontrun{
-fetch_bioconductor_package_info("3.14", "GenomicRanges")
-
+info <- fetch_bioconductor_package_info("3.14", "GenomicRanges")
+print(info)
 }
 }

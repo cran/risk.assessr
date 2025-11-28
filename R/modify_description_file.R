@@ -10,24 +10,18 @@
 #' @examples
 #' \dontrun{
 #'   modified_tar <- modify_description_file("path/to/mypackage.tar.gz")
-#'   print(modified_tar)
 #' }
 #'
 #' @importFrom utils untar tar
 #' @export
 modify_description_file <- function(tar_file) {
   
-  old_options <- options()
-  old_wd <- getwd()
-  
-  # Ensure cleanup on exit
-  on.exit({
-    options(old_options)
-    setwd(old_wd)
-  }, add = TRUE)
-  
   # Create a temporary directory
   temp_dir <- tempdir()
+
+  # save and set user's current working directory
+  oldwd <- getwd()  
+  on.exit(setwd(oldwd))
   
   # Extract the tar file into the temporary directory
   tryCatch({
@@ -66,17 +60,17 @@ modify_description_file <- function(tar_file) {
   # Modify the DESCRIPTION file
   description_content <- readLines(description_file)
   
-  if ("Config/build/clean-inst-doc: FALSE" %in% description_content) {
+  if ("Config/build/clean-inst-doc: false" %in% description_content) {
     return(tar_file)
   }
   
-  description_content <- c(description_content, "Config/build/clean-inst-doc: FALSE")
+  description_content <- c(description_content, "Config/build/clean-inst-doc: false")
   writeLines(description_content, description_file)
   
   # Recreate a new tar.gz file
   modified_tar_file <- tempfile(fileext = ".tar.gz")
   
-  current_wd <- getwd()
+  # set working directory to temp_dir
   setwd(temp_dir)
   
   tryCatch({
@@ -84,11 +78,9 @@ modify_description_file <- function(tar_file) {
       tar(modified_tar_file, files = package_name, compression = "gzip", tar = "internal")
     })
   }, error = function(e) {
-    setwd(current_wd) 
+    setwd(oldwd) 
     stop("Error in creating the tar.gz file: ", e$message)
   })
-  
-  setwd(current_wd)
   
   # # Clean up extracted files in temp_dir
   unlink(package_dir, recursive = TRUE)

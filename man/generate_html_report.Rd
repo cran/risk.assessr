@@ -4,7 +4,7 @@
 \alias{generate_html_report}
 \title{Generate HTML Report for Package Assessment}
 \usage{
-generate_html_report(assessment_results, output_dir)
+generate_html_report(assessment_results, output_dir = NULL)
 }
 \arguments{
 \item{assessment_results}{List containing the results from risk_assess_pkg function.}

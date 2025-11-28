@@ -19,9 +19,7 @@ This function retrieves the package archive information from the CRAN Archive.
 \examples{
 \dontrun{
 # Fetch package archive information for "dplyr"
-result <- parse_package_info("dplyr")
-
-print(result)
+parse_package_info("dplyr")
 
 }
 }

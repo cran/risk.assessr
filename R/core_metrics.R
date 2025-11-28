@@ -8,8 +8,11 @@
 #'
 #' The basename of `pkg_source_path` should be the package name and version pasted together
 #'
-#' The returned score is calculated via a weighted sum of notes (0.10), warnings (0.25), and errors (1.0). It has a maximum score of 1 (indicating no errors, notes or warnings)
-#' and a minimum score of 0 (equal to 1 error, 4 warnings, or 10 notes). This scoring methodology is taken directly from [riskmetric::metric_score.pkg_metric_r_cmd_check()].
+#' The returned score is calculated via a weighted sum of notes (0.10), warnings (0.25), and errors (1.0). 
+#' It has a maximum score of 1 (indicating no errors, notes or warnings)
+#' and a minimum score of 0 (equal to 1 error, 4 warnings, or 10 notes). 
+#' This scoring methodology is expanded from [riskmetric::metric_score.pkg_metric_r_cmd_check()] by including
+#' forbidden notes, 
 #' @keywords internal
 run_rcmdcheck <- function(pkg_source_path, rcmdcheck_args) {
   
@@ -28,6 +31,10 @@ run_rcmdcheck <- function(pkg_source_path, rcmdcheck_args) {
     message(glue::glue("rcmdcheck for {pkg_name} failed to run: {e$message}"))
     return(list(notes = character(0), warnings = character(0), errors = e$message))
   })
+  
+  
+  # Apply forbidden notes check
+  res_check <- check_forbidden_notes(res_check, pkg_name)
   
   # Initialize check_score to 0 in case res_check is NULL or calculation fails
   check_score <- 0
@@ -56,6 +63,67 @@ run_rcmdcheck <- function(pkg_source_path, rcmdcheck_args) {
   return(check_list)
 }
 
+#' Reclassify Forbidden Notes as Errors in rcmdcheck Results
+#'
+#' This internal helper function scans the `notes` field of an `rcmdcheck` result object
+#' for specific patterns that indicate more serious issues. If any of these patterns are found,
+#' the corresponding notes are reclassified as errors by moving them from the `notes` field
+#' to the `errors` field.
+#'
+#' @param res_check A list representing the result of an `rcmdcheck` run. It should contain
+#'   at least the elements `notes`, `warnings`, and `errors`, each being a character vector.
+#' @param pkg_name name of the package   
+#'
+#' @return A modified version of `res_check` where certain notes matching forbidden patterns
+#'   are moved to the `errors` field.
+#'
+#' @export
+#'
+#' @examples
+#' \donttest{
+#' pkg_name <- "foo"
+#' res_check <- list(
+#'   notes = c("'foo' import not declared from: 'bar'",
+#'             "Namespace in Imports field not imported from: 'baz'",
+#'             "no visible global function definition for 'qux'",
+#'             "some harmless note"),
+#'   warnings = character(0),
+#'   errors = character(0)
+#' )
+#' updated <- check_forbidden_notes(res_check, pkg_name)
+#' print(updated$errors)  # Should include the first three notes
+#' print(updated$notes)   # Should include only the harmless note
+#' }
+check_forbidden_notes <- function(res_check, pkg_name) {
+  if (is.null(res_check$notes) || length(res_check$notes) == 0) {
+    message(glue::glue("No forbidden notes for {pkg_name}"))
+  } else {
+    forbidden_patterns <- c(
+      "'.*' import not declared from",
+      "Namespace in Imports field not imported from",
+      "no visible global .+ definition"
+    )
+    
+    forbidden_matches <- sapply(forbidden_patterns, function(pattern) {
+      grepl(pattern, res_check$notes, perl = TRUE)
+    })
+    
+    if (length(res_check$notes) == 1) {
+      is_forbidden <- as.logical(forbidden_matches)
+    } else {
+      is_forbidden <- apply(forbidden_matches, 1, any)
+    }
+    
+    if (any(is_forbidden)) {
+      res_check$errors <- c(res_check$errors, res_check$notes[is_forbidden])
+      res_check$notes <- res_check$notes[!is_forbidden]
+    } else {
+      message(glue::glue("No forbidden notes for {pkg_name}"))
+    }
+  }
+  
+  return(res_check)
+}
 
 
 #' Run covr and potentially save results to disk

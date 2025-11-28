@@ -9,21 +9,33 @@ get_cran_package_url(package_name, version, last_version, all_versions)
 \arguments{
 \item{package_name}{A character string specifying the name of the package.}
 
-\item{version}{An optional character string specifying the version of the package.}
+\item{version}{An optional character string specifying the version of the package.
+If `NULL`, the latest version is assumed.}
 
-\item{last_version}{A character string specifying the latest available version of the package.}
+\item{last_version}{A named list with elements version and date, 
+representing the latest available version and its publication date.}
 
-\item{all_versions}{A character vector of all available versions of the package.}
+\item{all_versions}{A list of named lists, each with elements version and date, 
+representing all known versions of the package and their publication dates.}
 }
 \value{
-A character string containing the URL to download the package tarball, or `NULL`
-if the version is not found in the list of available versions.
+A character string containing the URL to download the package tarball,
+or "No valid URL found" if the version is not found in the list of available versions.
 }
 \description{
 This function constructs the CRAN package URL for a specified package and version.
 }
 \examples{
-\donttest{
-url_result <- get_cran_package_url("dplyr", NULL, "1.0.10", c("1.0.0", "1.0.10"))
+\dontrun{
+# Example data structure
+last_version <- list(version = "1.0.10", date = "2024-01-01")
+all_versions <- list(
+  list(version = "1.0.0", date = "2023-01-01"),
+  list(version = "1.0.10", date = "2024-01-01")
+)
+
+# Get the URL for the latest version of "dplyr"
+url <- get_cran_package_url("dplyr", NULL, last_version, all_versions)
+print(url)
 }
 }

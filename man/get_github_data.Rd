@@ -7,34 +7,34 @@
 get_github_data(owner, repo)
 }
 \arguments{
-\item{owner}{A character string specifying the owner of the repository (e.g., GitHub username).}
+\item{owner}{A character string specifying the owner of the repository.}
 
 \item{repo}{A character string specifying the name of the repository.
-A github Personal Access Token (PAT) will be needed for some request or to help with the rate limit.
 
-Use Sys.setenv(GITHUB_TOKEN = "personal_access_token") or store your token in a .Renviron file
-(GitHub fine grained token are not yet covered by gh)}
+A GitHub Personal Access Token (PAT) will be needed for some requests or to help with the rate limit.
+Use Sys.setenv(GITHUB_TOKEN = "personal_access_token") or store your token in a .Renviron file.
+The token is passed via the `Authorization` header only if `Sys.getenv("GITHUB_TOKEN")` is non-empty.}
 }
 \value{
 A list containing:
   - `created_at`: Creation date of the repository.
-  - `stars`: Number of stars the repository 
-  - `forks`: Number of forks of the repository.
-  - `date`: acquisition date in the format "YYYY-MM-DD".
-  - `recent_commits_count`: count of commits in the last 30 days (from acquisition date).
+  - `stars`: Number of stars.
+  - `forks`: Number of forks.
+  - `date`: Acquisition date (YYYY-MM-DD).
+  - `recent_commits_count`: Number of commits in the last 30 days.
+  - `open_issues`: Number of open issues.
 }
 \description{
 This function retrieves metadata about a GitHub repository, including creation date,
 stars, forks, and the number of recent commits within the last 30 days.
 }
 \details{
-If the `owner` parameter is `NA` or empty, the function returns an empty response object.
-Repository data is fetched using the GitHub API via the `gh` package.
+Repository data is fetched using the GitHub API via `curl` and `jsonlite`.
 }
 \examples{
 \dontrun{
-# Fetch data for the "ggplot2" repository owned by "tidyverse"
 result <- get_github_data("tidyverse", "ggplot2")
 print(result)
 }
+
 }

@@ -1,3 +1,45 @@
+test_that("NULL input returns NULL", {
+  expect_null(as_iso_date(NULL))
+  expect_null(as_iso_date("not-a-date"))
+})
+
+test_that("Date inputs are formatted correctly", {
+  d <- as.Date(c("2025-01-01", "2025-12-31"))
+  out <- as_iso_date(d)
+  expect_type(out, "character")
+  expect_identical(out, c("2025-01-01", "2025-12-31"))
+})
+
+test_that("Character inputs coerce via as.Date and format as ISO", {
+  x <- c("2024-02-28", "2024/02/29", "not-a-date")
+  out <- as_iso_date(x)
+  # as.Date("2024/02/29") parses under some locales; ensure expected positions
+  expect_true(out[1] == "2024-02-28")
+  expect_true(is.na(out[3]))
+})
+
+test_that("POSIXct inputs drop time and timezone (UTC by as.Date default)", {
+  ts <- as.POSIXct(c("2025-03-14 00:00:00", "2025-03-14 23:59:59"), tz = "UTC")
+  out <- as_iso_date(ts)
+  expect_identical(out, c("2025-03-14", "2025-03-14"))
+})
+
+test_that("NA values are preserved as NA_character_", {
+  x <- c(NA, "2020-01-02")
+  out <- as_iso_date(x)
+  expect_true(is.na(out[1]))
+  expect_identical(out[2], "2020-01-02")
+})
+
+test_that("Vectorization: length and element-wise behavior", {
+  x <- c("2021-01-01", "bad", "2021-01-03")
+  out <- as_iso_date(x)
+  expect_length(out, length(x))
+  expect_identical(out[c(1,3)], c("2021-01-01", "2021-01-03"))
+  expect_true(is.na(out[2]))
+})
+
+
 test_that("Empty HTML content", {
   empty_html <- NULL
   result <- parse_html_version(empty_html, "dummy_package")
@@ -191,6 +233,8 @@ test_that("check_cran_package returns FALSE for a package containing a point ", 
 })
 
 
+
+
 test_that("check_cran_package returns FALSE for a non-existent package", {
   # Create a mock response object for a 404 status
   mock_response <- list(
@@ -218,212 +262,234 @@ test_that("check_cran_package returns FALSE for a non-existent package", {
 # get_cran_package_url
 
 test_that("get_cran_package_url returns URL for the latest version when version is NULL", {
-  result <- get_cran_package_url("mockpackage", NULL, "1.1.0", c("1.0.0", "1.1.0"))
+  last_version <- list(version = "1.1.0", date = "2024-05-01")
+  all_versions <- list(
+    list(version = "1.0.0", date = "2023-01-01"),
+    list(version = "1.1.0", date = "2024-05-01")
+  )
+  result <- get_cran_package_url("mockpackage", NULL, last_version, all_versions)
   expect_equal(result, "https://cran.r-project.org/src/contrib/mockpackage_1.1.0.tar.gz")
 })
 
 test_that("get_cran_package_url returns URL for the latest version when explicitly provided", {
-  result <- get_cran_package_url("mockpackage", "1.1.0", "1.1.0", c("1.0.0", "1.1.0"))
+  last_version <- list(version = "1.1.0", date = "2024-05-01")
+  all_versions <- list(
+    list(version = "1.0.0", date = "2023-01-01"),
+    list(version = "1.1.0", date = "2024-05-01")
+  )
+  result <- get_cran_package_url("mockpackage", "1.1.0", last_version, all_versions)
   expect_equal(result, "https://cran.r-project.org/src/contrib/mockpackage_1.1.0.tar.gz")
 })
 
 test_that("get_cran_package_url returns URL for a specific older version", {
-  result <- get_cran_package_url("mockpackage", "1.0.0", "1.1.0", c("1.0.0", "1.1.0"))
+  last_version <- list(version = "1.1.0", date = "2024-05-01")
+  all_versions <- list(
+    list(version = "1.0.0", date = "2023-01-01"),
+    list(version = "1.1.0", date = "2024-05-01")
+  )
+  result <- get_cran_package_url("mockpackage", "1.0.0", last_version, all_versions)
   expect_equal(result, "https://cran.r-project.org/src/contrib/Archive/mockpackage/mockpackage_1.0.0.tar.gz")
 })
 
-test_that("get_cran_package_url returns NULL for a version that doesn't exist", {
-  result <- get_cran_package_url("mockpackage", "2.0.0", "1.1.0", c("1.0.0", "1.1.0"))
+test_that("get_cran_package_url returns fallback message for a version that doesn't exist", {
+  last_version <- list(version = "1.1.0", date = "2024-05-01")
+  all_versions <- list(
+    list(version = "1.0.0", date = "2023-01-01"),
+    list(version = "1.1.0", date = "2024-05-01")
+  )
+  result <- get_cran_package_url("mockpackage", "2.0.0", last_version, all_versions)
   expect_equal(result, "No valid URL found")
 })
 
 
+
 # Test cases: get_versions
 
-test_that("get_versions empty table", {
+test_that("get_versions with empty table returns last version correctly", {
   # Mock input table
   mock_table <- NULL
   
   # Mock package name
   package_name <- "mockpackage"
   
-  # Mock curl_fetch_memory
+  # Mock curl_fetch_memory response with version and date_publication
   mock_response <- list(
     status_code = 200,
-    content = charToRaw('{"version": "1.2.0"}') 
+    content = charToRaw('{"version": "1.2.0", "date_publication": "2024-05-01T00:00:00Z"}')
   )
+  
+  # Create a mock function for curl_fetch_memory
   mock_curl_fetch <- mockery::mock(mock_response)
   
-  # Use with_mocked_bindings to mock curl_fetch_memory
+  # Use with_mocked_bindings to override curl_fetch_memory in the curl package
   with_mocked_bindings(
     curl_fetch_memory = mock_curl_fetch,
     {
-      # Call the function with mocked table and package name
       result <- get_versions(mock_table, package_name)
-      # Validate the result
-      expect_equal(result$all_versions, c("1.2.0"))
-      expect_equal(result$last_version, "1.2.0")
       
-    },
-    .package = "curl" 
-  )
-})
-
-test_that("get_versions extracts and combines versions correctly", {
-  # Mock input table
-  mock_table <- list(
-    list(package_version = "1.0.0"),
-    list(package_version = "1.1.0")
-  )
-  
-  # Mock package name
-  package_name <- "mockpackage"
-  
-  # Mock curl_fetch_memory
-  mock_response <- list(
-    status_code = 200,
-    content = charToRaw('{"version": "1.2.0"}') 
-  )
-  mock_curl_fetch <- mockery::mock(mock_response)
-  
-  # Use with_mocked_bindings to mock curl_fetch_memory
-  with_mocked_bindings(
-    curl_fetch_memory = mock_curl_fetch,
-    {
-      # Call the function with mocked table and package name
-      result <- get_versions(mock_table, package_name)
-      # Validate the result
-      expect_equal(result$all_versions, c("1.0.0", "1.1.0", "1.2.0"))
-      expect_equal(result$last_version, "1.2.0")
-      
-    },
-    .package = "curl" 
-  )
-})
-
-
-
-test_that("get_versions handles invalid API response", {
-  # Mock input table
-  mock_table <- list(
-    list(package_version = "1.0.0"),
-    list(package_version = "1.1.0")
-  )
-  
-  # Mock package name
-  package_name <- "mockpackage"
-  
-  # Mock curl_fetch_memory
-  mock_response <- list(
-    status_code = 500,  # Simulate a failed API request
-    content = charToRaw("")
-  )
-  mock_curl_fetch <- mockery::mock(mock_response)
-  
-  # Use with_mocked_bindings to mock curl_fetch_memory
-  with_mocked_bindings(
-    curl_fetch_memory = mock_curl_fetch,
-    {
-      # Call the function with mocked table and package name
-      result <- get_versions(mock_table, package_name)
-      # Validate the result
-      expect_equal(result$all_versions, c("1.0.0", "1.1.0"))  # Only table versions
-      expect_null(result$last_version)  # API did not return a version
+      expect_equal(result$all_versions, list(list(version = "1.2.0", date = "2024-05-01")))
+      expect_equal(result$last_version, list(version = "1.2.0", date = "2024-05-01"))
     },
     .package = "curl"
   )
 })
 
 
-test_that("get_versions removes duplicate versions", {
-  # Mock input table
+test_that("get_versions extracts and combines versions correctly", {
   mock_table <- list(
-    list(package_version = "1.0.0"),
-    list(package_version = "1.0.0"),  # Duplicate
-    list(package_version = "1.1.0")
+    list(package_version = "1.0.0", date = "2022-01-01"),
+    list(package_version = "1.1.0", date = "2023-01-01")
   )
   
-  # Mock package name
   package_name <- "mockpackage"
   
-  # Mock curl_fetch_memory
   mock_response <- list(
     status_code = 200,
-    content = charToRaw('{"version": "1.1.0"}')  # Simulate a duplicate version from the API
+    content = charToRaw('{"version": "1.2.0", "date_publication": "2024-05-01T00:00:00Z"}')
   )
   mock_curl_fetch <- mockery::mock(mock_response)
   
-  # Use with_mocked_bindings to mock curl_fetch_memory
   with_mocked_bindings(
     curl_fetch_memory = mock_curl_fetch,
     {
-      # Call the function with mocked table and package name
       result <- get_versions(mock_table, package_name)
-      # Validate the result
-      expect_equal(result$all_versions, c("1.0.0", "1.1.0"))  # Unique versions only
-      expect_equal(result$last_version, "1.1.0")  # Latest version
+      
+      expect_equal(result$all_versions, list(
+        list(version = "1.0.0", date = "2022-01-01"),
+        list(version = "1.1.0", date = "2023-01-01"),
+        list(version = "1.2.0", date = "2024-05-01")
+      ))
+      
+      expect_equal(result$last_version, list(
+        version = "1.2.0",
+        date = "2024-05-01"
+      ))
+    },
+    .package = "curl"
+  )
+})
+
+
+test_that("get_versions handles invalid API response", {
+  mock_table <- list(
+    list(package_version = "1.0.0", date = "2022-01-01"),
+    list(package_version = "1.1.0", date = "2023-01-01")
+  )
+  
+  package_name <- "mockpackage"
+  
+  mock_response <- list(
+    status_code = 500,
+    content = charToRaw("")
+  )
+  mock_curl_fetch <- mockery::mock(mock_response)
+  
+  with_mocked_bindings(
+    curl_fetch_memory = mock_curl_fetch,
+    {
+      result <- get_versions(mock_table, package_name)
+      
+      expect_equal(result$all_versions, list(
+        list(version = "1.0.0", date = "2022-01-01"),
+        list(version = "1.1.0", date = "2023-01-01")
+      ))
+      expect_null(result$last_version)
+    },
+    .package = "curl"
+  )
+})
+
+
+
+
+test_that("get_versions removes duplicate versions", {
+  mock_table <- list(
+    list(package_version = "1.0.0", date = "2022-01-01"),
+    list(package_version = "1.0.0", date = "2022-01-01"),
+    list(package_version = "1.1.0", date = "2023-01-01")
+  )
+  
+  package_name <- "mockpackage"
+  
+  mock_response <- list(
+    status_code = 200,
+    content = charToRaw('{"version": "1.1.0", "date_publication": "2023-01-01T00:00:00Z"}')
+  )
+  mock_curl_fetch <- mockery::mock(mock_response)
+  
+  with_mocked_bindings(
+    curl_fetch_memory = mock_curl_fetch,
+    {
+      result <- get_versions(mock_table, package_name)
+      
+      expect_equal(result$all_versions, list(
+        list(version = "1.0.0", date = "2022-01-01"),
+        list(version = "1.0.0", date = "2022-01-01"),
+        list(version = "1.1.0", date = "2023-01-01")
+      ))
+      
+      expect_equal(result$last_version, list(
+        version = "1.1.0",
+        date = "2023-01-01"
+      ))
     },
     .package = "curl"
   )
 })
 
 test_that("get_versions handles missing API version", {
-  # Mock input table
   mock_table <- list(
-    list(package_version = "1.0.0"),
-    list(package_version = "1.1.0")
+    list(package_version = "1.0.0", date = "2022-01-01"),
+    list(package_version = "1.1.0", date = "2023-01-01")
   )
   
-  # Mock package name
   package_name <- "mockpackage"
   
-  # Mock curl_fetch_memory
   mock_response <- list(
     status_code = 200,
-    content = charToRaw('{}')  # API response has no version
+    content = charToRaw('{}')  # No version or date_publication
   )
   mock_curl_fetch <- mockery::mock(mock_response)
   
-  # Use with_mocked_bindings to mock curl_fetch_memory
   with_mocked_bindings(
     curl_fetch_memory = mock_curl_fetch,
     {
-      # Call the function with mocked table and package name
       result <- get_versions(mock_table, package_name)
-      # Validate the result
-      expect_equal(result$all_versions, c("1.0.0", "1.1.0"))  
-      expect_null(result$last_version)  
+      
+      expect_equal(result$all_versions, list(
+        list(version = "1.0.0", date = "2022-01-01"),
+        list(version = "1.1.0", date = "2023-01-01")
+      ))
+      expect_null(result$last_version$version)
     },
     .package = "curl"
   )
 })
 
 
+
 # Test cases: check_and_fetch_cran_package
 
+
 test_that("check_and_fetch_cran_package fetches the correct URL for the latest version", {
-  # Mock check_cran_package to return TRUE
   mock_check_cran_package <- mockery::mock(TRUE)
-  
-  # Mock parse_package_info to return dummy HTML
   mock_parse_package_info <- mockery::mock("<html>Mock HTML Content</html>")
-  
-  # Mock parse_html_version to return dummy table
-  mock_parse_html_version <- mockery::mock(list(
-    list(package_version = "1.0.0"),
-    list(package_version = "1.1.0")
-  ))
-  
-  # Mock get_versions to return versions
+  mock_parse_html_version <- mockery::mock(
+    list(
+      list(package_version = "1.0.0", date = "2022-01-01"),
+      list(package_version = "1.1.0", date = "2023-01-01")
+    )
+  )
   mock_get_versions <- mockery::mock(list(
-    all_versions = c("1.0.0", "1.1.0", "1.2.0"),
-    last_version = "1.2.0"
+    all_versions = list(
+      list(version = "1.0.0", date = "2022-01-01"),
+      list(version = "1.1.0", date = "2023-01-01"),
+      list(version = "1.2.0", date = "2024-01-01")
+    ),
+    last_version = list(version = "1.2.0", date = "2024-01-01")
   ))
+  mock_get_cran_package_url <- mockery::mock("https://cran.r-project.org/src/contrib/mockpackage_1.2.0.tar.gz")
   
-  # Mock get_cran_package_url to return the latest version URL
-  mock_get_cran_package_url <- mockery::mock("https://cran.r-project.org/src/contrib/mockpackage_1.1.0.tar.gz")
-  
-  # Use with_mocked_bindings to mock all dependencies
   with_mocked_bindings(
     check_cran_package = mock_check_cran_package,
     parse_package_info = mock_parse_package_info,
@@ -431,42 +497,42 @@ test_that("check_and_fetch_cran_package fetches the correct URL for the latest v
     get_versions = mock_get_versions,
     get_cran_package_url = mock_get_cran_package_url,
     {
-      # Call the function
       result <- check_and_fetch_cran_package("mockpackage")
       
-      # Validate the result
-      expect_equal(result$package_url, "https://cran.r-project.org/src/contrib/mockpackage_1.1.0.tar.gz")
-      expect_equal(result$last_version, "1.2.0")
-      expect_null(result$version)  
-      expect_equal(result$all_versions, c("1.0.0", "1.1.0", "1.2.0"))
+      expect_equal(result$package_url, "https://cran.r-project.org/src/contrib/mockpackage_1.2.0.tar.gz")
+      expect_equal(result$last_version$version, "1.2.0")
+      expect_equal(result$last_version$date, "2024-01-01")
+      expect_null(result$version)
+      expect_equal(
+        result$all_versions,
+        list(
+          list(version = "1.0.0", date = "2022-01-01"),
+          list(version = "1.1.0", date = "2023-01-01"),
+          list(version = "1.2.0", date = "2024-01-01")
+        )
+      )
     }
   )
 })
 
-
 test_that("check_and_fetch_cran_package handles specific version correctly", {
-  # Mock check_cran_package to return TRUE
   mock_check_cran_package <- mockery::mock(TRUE)
-  
-  # Mock parse_package_info to return dummy HTML
   mock_parse_package_info <- mockery::mock("<html>Mock HTML Content</html>")
-  
-  # Mock parse_html_version to return dummy table
-  mock_parse_html_version <- mockery::mock(list(
-    list(package_version = "1.0.0"),
-    list(package_version = "1.1.0")
-  ))
-  
-  # Mock get_versions to return versions
+  mock_parse_html_version <- mockery::mock(
+    list(
+      list(package_version = "1.0.0", date = "2022-01-01"),
+      list(package_version = "1.1.0", date = "2023-01-01")
+    )
+  )
   mock_get_versions <- mockery::mock(list(
-    all_versions = c("1.0.0", "1.1.0"),
-    last_version = "1.1.0"
+    all_versions = list(
+      list(version = "1.0.0", date = "2022-01-01"),
+      list(version = "1.1.0", date = "2023-01-01")
+    ),
+    last_version = list(version = "1.1.0", date = "2023-01-01")
   ))
-  
-  # Mock get_cran_package_url to return the URL for a specific version
   mock_get_cran_package_url <- mockery::mock("https://cran.r-project.org/src/contrib/Archive/mockpackage/mockpackage_1.0.0.tar.gz")
   
-  # Use with_mocked_bindings to mock all dependencies
   with_mocked_bindings(
     check_cran_package = mock_check_cran_package,
     parse_package_info = mock_parse_package_info,
@@ -474,41 +540,41 @@ test_that("check_and_fetch_cran_package handles specific version correctly", {
     get_versions = mock_get_versions,
     get_cran_package_url = mock_get_cran_package_url,
     {
-      # Call the function with a specific version
       result <- check_and_fetch_cran_package("mockpackage", "1.0.0")
       
-      # Validate the result
       expect_equal(result$package_url, "https://cran.r-project.org/src/contrib/Archive/mockpackage/mockpackage_1.0.0.tar.gz")
       expect_equal(result$version, "1.0.0")
-      expect_equal(result$last_version, "1.1.0")
-      expect_equal(result$all_versions, c("1.0.0", "1.1.0"))
+      expect_equal(result$last_version$version, "1.1.0")
+      expect_equal(result$last_version$date, "2023-01-01")
+      expect_equal(
+        result$all_versions,
+        list(
+          list(version = "1.0.0", date = "2022-01-01"),
+          list(version = "1.1.0", date = "2023-01-01")
+        )
+      )
     }
   )
 })
 
 test_that("check_and_fetch_cran_package handles missing version", {
-  # Mock check_cran_package to return TRUE
   mock_check_cran_package <- mockery::mock(TRUE)
-  
-  # Mock parse_package_info to return dummy HTML
   mock_parse_package_info <- mockery::mock("<html>Mock HTML Content</html>")
-  
-  # Mock parse_html_version to return dummy table
-  mock_parse_html_version <- mockery::mock(list(
-    list(package_version = "1.0.0"),
-    list(package_version = "1.1.0")
-  ))
-  
-  # Mock get_versions to return versions
+  mock_parse_html_version <- mockery::mock(
+    list(
+      list(package_version = "1.0.0", date = "2022-01-01"),
+      list(package_version = "1.1.0", date = "2023-01-01")
+    )
+  )
   mock_get_versions <- mockery::mock(list(
-    all_versions = c("1.0.0", "1.1.0"),
-    last_version = "1.1.0"
+    all_versions = list(
+      list(version = "1.0.0", date = "2022-01-01"),
+      list(version = "1.1.0", date = "2023-01-01")
+    ),
+    last_version = list(version = "1.1.0", date = "2023-01-01")
   ))
-  
-  # Mock get_cran_package_url to return NULL (version not found)
   mock_get_cran_package_url <- mockery::mock(NULL)
   
-  # Use with_mocked_bindings to mock all dependencies
   with_mocked_bindings(
     check_cran_package = mock_check_cran_package,
     parse_package_info = mock_parse_package_info,
@@ -516,37 +582,33 @@ test_that("check_and_fetch_cran_package handles missing version", {
     get_versions = mock_get_versions,
     get_cran_package_url = mock_get_cran_package_url,
     {
-      # Call the function with a non-existent version
       result <- check_and_fetch_cran_package("mockpackage", "2.0.0")
       
-      # Validate the result
       expect_equal(result$error, "Version 2.0.0 for mockpackage not found")
-      expect_match(result$version_available, "1.0.0, 1.1.0")
-      
+      expect_equal(
+        result$versions_available,
+        list(
+          list(version = "1.0.0", date = "2022-01-01"),
+          list(version = "1.1.0", date = "2023-01-01")
+        )
+      )
     }
   )
 })
 
 test_that("check_and_fetch_cran_package with version table null", {
-  # Mock check_cran_package to return TRUE
   mock_check_cran_package <- mockery::mock(TRUE)
-  
-  # Mock parse_package_info to return dummy HTML
   mock_parse_package_info <- mockery::mock(NULL)
-  
-  # Mock parse_html_version to return dummy table
   mock_parse_html_version <- mockery::mock(NULL)
   
-  # Mock get_versions to return versions
   mock_get_versions <- mockery::mock(list(
-    all_versions = c("1.2.0"),
-    last_version = "1.2.0"
+    all_versions = list(
+      list(version = "1.2.0", date = "2024-01-01")
+    ),
+    last_version = list(version = "1.2.0", date = "2024-01-01")
   ))
-  
-  # Mock get_cran_package_url to return the latest version URL
   mock_get_cran_package_url <- mockery::mock("https://cran.r-project.org/src/contrib/mockpackage_1.2.0.tar.gz")
   
-  # Use with_mocked_bindings to mock all dependencies
   with_mocked_bindings(
     check_cran_package = mock_check_cran_package,
     parse_package_info = mock_parse_package_info,
@@ -554,14 +616,18 @@ test_that("check_and_fetch_cran_package with version table null", {
     get_versions = mock_get_versions,
     get_cran_package_url = mock_get_cran_package_url,
     {
-      # Call the function
       result <- check_and_fetch_cran_package("mockpackage")
       
-      # Validate the result
       expect_equal(result$package_url, "https://cran.r-project.org/src/contrib/mockpackage_1.2.0.tar.gz")
-      expect_equal(result$last_version, "1.2.0")
-      expect_null(result$version)  
-      expect_equal(result$all_versions, c("1.2.0"))
+      expect_equal(result$last_version$version, "1.2.0")
+      expect_equal(result$last_version$date, "2024-01-01")
+      expect_null(result$version)
+      expect_equal(
+        result$all_versions,
+        list(
+          list(version = "1.2.0", date = "2024-01-01")
+        )
+      )
     }
   )
 })
@@ -569,26 +635,19 @@ test_that("check_and_fetch_cran_package with version table null", {
 
 # get_internal_package_url
 
+
+# test-get_internal_package_url.R
+
 test_that("check_and_fetch_cran_package with version table null", {
-  # Mock check_cran_package to return TRUE
   mock_check_cran_package <- mockery::mock(TRUE)
-  
-  # Mock parse_package_info to return dummy HTML
   mock_parse_package_info <- mockery::mock(NULL)
-  
-  # Mock parse_html_version to return dummy table
-  mock_parse_html_version <- mockery::mock(NULL)
-  
-  # Mock get_versions to return versions
+  mock_parse_html_version <- mockery::mock(NULL, cycle = TRUE)
   mock_get_versions <- mockery::mock(list(
-    all_versions = c("1.2.0"),
-    last_version = "1.2.0"
-  ))
-  
-  # Mock get_cran_package_url to return the latest version URL
+    all_versions = list(list(version = "1.2.0", date = "2024-01-01")),
+    last_version = list(version = "1.2.0", date = "2024-01-01")
+  ), cycle = TRUE)
   mock_get_cran_package_url <- mockery::mock("https://cran.r-project.org/src/contrib/mockpackage_1.2.0.tar.gz")
   
-  # Use with_mocked_bindings to mock all dependencies
   with_mocked_bindings(
     check_cran_package = mock_check_cran_package,
     parse_package_info = mock_parse_package_info,
@@ -596,178 +655,468 @@ test_that("check_and_fetch_cran_package with version table null", {
     get_versions = mock_get_versions,
     get_cran_package_url = mock_get_cran_package_url,
     {
-      # Call the function
       result <- check_and_fetch_cran_package("mockpackage")
       
-      # Validate the result
       expect_equal(result$package_url, "https://cran.r-project.org/src/contrib/mockpackage_1.2.0.tar.gz")
-      expect_equal(result$last_version, "1.2.0")
-      expect_null(result$version)  
-      expect_equal(result$all_versions, c("1.2.0"))
+      expect_equal(result$last_version$version, "1.2.0")
+      expect_equal(result$last_version$date, "2024-01-01")
+      expect_null(result$version)
+      expect_equal(result$all_versions, list(list(version = "1.2.0", date = "2024-01-01")))
     }
   )
 })
 
-test_that("get_internal_package_url works correctly", {
-  # Corrected mock response including status_code
-  mock_response <- list(
-    content = charToRaw(enc2utf8('{
-      "version": "1.2.0",
-      "archived": [{"version": "1.0.0"}, {"version": "1.1.0"}]
-    }')),
-    status_code = 200 
+# get_internal_package_url
+
+test_that("get_internal_package_url works correctly for latest version", {
+  # Mock the repos API response
+  mock_repos_response <- list(
+    content = charToRaw(enc2utf8('[
+      {"id": 6, "name": "art-git"},
+      {"id": 1, "name": "prod-cran"}
+    ]')),
+    status_code = 200
   )
   
-  # Create mock for curl_fetch_memory
-  mock_curl_fetch_memory <- mockery::mock(mock_response)
+  # Mock the package API response
+  mock_package_response <- list(
+    content = charToRaw(enc2utf8('{
+      "version": "1.2.0",
+      "date_publication": "2024-01-01T12:00:00+01:00",
+      "archived": [{"version": "1.0.0", "date": "2023-01-01T00:00:00+01:00"}, {"version": "1.1.0", "date": "2023-06-01T00:00:00+01:00"}]
+    }')),
+    status_code = 200
+  )
   
-  # Mock curl_fetch_memory in the "curl" package
+  # Create a mock that returns different responses for different URLs
+  mock_curl_fetch_memory <- mockery::mock(
+    mock_repos_response,  # First call - for repos list
+    mock_package_response # Second call - for package info
+  )
+  
   local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
   
-  # Call the function
-  result <- get_internal_package_url("mockpackage")
+  result <- get_internal_package_url("mockpackage", base_url="https://rstudio-pm.com")
   
-  # Validate the result
-  expect_equal(result$url, "http://cran.us.r-project.org/src/contrib/mockpackage_1.2.0.tar.gz")
-  expect_equal(result$last_version, "1.2.0")
-  expect_equal(result$all_versions, c("1.2.0", "1.0.0", "1.1.0"))
+  # Verify the mock was called with the correct URLs
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[1]], 
+    list("https://rstudio-pm.com/__api__/repos/")
+  )
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[2]], 
+    list("https://rstudio-pm.com/__api__/repos/6/packages/mockpackage")
+  )
+  
+  # Verify the result
+  expect_equal(result$url, "https://rstudio-pm.com/art-git/latest/src/contrib/mockpackage_1.2.0.tar.gz")
+  expect_equal(result$last_version$version, "1.2.0")
+  expect_equal(result$all_versions, list(
+    list(version = "1.2.0", date = as.Date("2024-01-01")),
+    list(version = "1.0.0", date = as.Date("2023-01-01")),
+    list(version = "1.1.0", date = as.Date("2023-06-01"))
+  ))
+  expect_equal(result$repo_id, c("art-git" = 6))
+  expect_equal(result$repo_name, "art-git")
 })
 
+test_that("get_internal_package_url works correctly for latest version", {
 
-test_that("get_internal_package_url works correctly", {
-  # Corrected mock response including status_code
-  mock_response <- list(
-    content = charToRaw(enc2utf8('{
-      "version": "1.2.0",
-      "archived": [{"version": "1.0.0"}, {"version": "1.1.0"}]
-    }')),
-    status_code = 200  
+  mock_repos_response <- list(
+    content = charToRaw(enc2utf8('[
+      {"id": 6, "name": "art-git"},
+      {"id": 1, "name": "prod-cran"}
+    ]')),
+    status_code = 200
   )
   
-  mock_curl_fetch_memory <- mockery::mock(mock_response)
+  mock_package_response <- list(
+    content = charToRaw(enc2utf8('{
+      "version": "1.2.0",
+      "date_publication": "2024-01-01T12:00:00+01:00",
+      "archived": [{"version": "1.0.0", "date": "2023-01-01T00:00:00+01:00"}, {"version": "1.1.0", "date": "2023-06-01T00:00:00+01:00"}]
+    }')),
+    status_code = 200
+  )
+  
+   mock_curl_fetch_memory <- mockery::mock(
+    mock_repos_response,  
+    mock_package_response 
+  )
+  
   local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
   
-  result <- get_internal_package_url("mockpackage")
+  result <- get_internal_package_url("mockpackage", base_url="https://rstudio-pm.com")
   
-  # Validate the result
-  expect_equal(result$url, "http://cran.us.r-project.org/src/contrib/mockpackage_1.2.0.tar.gz")
-  expect_equal(result$last_version, "1.2.0")
-  expect_equal(result$all_versions, c("1.2.0", "1.0.0", "1.1.0"))
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[1]], 
+    list("https://rstudio-pm.com/__api__/repos/")
+  )
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[2]], 
+    list("https://rstudio-pm.com/__api__/repos/6/packages/mockpackage")
+  )
+  
+  expect_equal(result$url, "https://rstudio-pm.com/art-git/latest/src/contrib/mockpackage_1.2.0.tar.gz")
+  expect_equal(result$last_version$version, "1.2.0")
+  expect_equal(result$all_versions, list(
+    list(version = "1.2.0", date = as.Date("2024-01-01")),
+    list(version = "1.0.0", date = as.Date("2023-01-01")),
+    list(version = "1.1.0", date = as.Date("2023-06-01"))
+  ))
+  expect_equal(result$repo_id, c("art-git" = 6))
+  expect_equal(result$repo_name, "art-git")
 })
 
 test_that("get_internal_package_url works correctly for archived version", {
-  mock_response <- list(
+  
+  mock_repos_response <- list(
+    content = charToRaw(enc2utf8('[
+      {"id": 6, "name": "art-git"},
+      {"id": 1, "name": "prod-cran"}
+    ]')),
+    status_code = 200
+  )
+  
+  mock_package_response <- list(
     content = charToRaw(enc2utf8('{
       "version": "1.2.0",
-      "archived": [{"version": "1.0.0"}, {"version": "1.1.0"}]
+      "date_publication": "2024-01-01T12:00:00+01:00",
+      "archived": [{"version": "1.0.0", "date": "2023-01-01T00:00:00+01:00"}, {"version": "1.1.0", "date": "2023-06-01T00:00:00+01:00"}]
     }')),
     status_code = 200
   )
   
-  mock_curl_fetch_memory <- mockery::mock(mock_response)
+  mock_curl_fetch_memory <- mockery::mock(
+    mock_repos_response,  
+    mock_package_response 
+  )
+  
   local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
   
-  result <- get_internal_package_url("mockpackage", "1.0.0")
+  result <- get_internal_package_url("mockpackage", "1.0.0", base_url="https://rstudio-pm.com")
   
-  # Validate the result
-  expect_equal(result$url, "http://cran.us.r-project.org/src/contrib/Archive/mockpackage/mockpackage_1.0.0.tar.gz")
-  expect_equal(result$last_version, "1.2.0")
-  expect_equal(result$all_versions, c("1.2.0", "1.0.0", "1.1.0"))
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[1]], 
+    list("https://rstudio-pm.com/__api__/repos/")
+  )
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[2]], 
+    list("https://rstudio-pm.com/__api__/repos/6/packages/mockpackage")
+  )
+  
+  expect_equal(result$url, "https://rstudio-pm.com/art-git/latest/src/contrib/Archive/mockpackage/mockpackage_1.0.0.tar.gz")
+  expect_equal(result$last_version$version, "1.2.0")
+  expect_equal(result$all_versions, list(
+    list(version = "1.2.0", date = as.Date("2024-01-01")),
+    list(version = "1.0.0", date = as.Date("2023-01-01")),
+    list(version = "1.1.0", date = as.Date("2023-06-01"))
+  ))
+  expect_equal(result$repo_id, c("art-git" = 6))
+  expect_equal(result$repo_name, "art-git")
 })
 
-test_that("get_internal_package_url works correctly when no last version exists", {
-  mock_response <- list(
+
+test_that("get_internal_package_url returns NULLs when no last version exists", {
+  
+  mock_repos_response <- list(
+    content = charToRaw(enc2utf8('[
+      {"id": 6, "name": "art-git"},
+      {"id": 1, "name": "prod-cran"}
+    ]')),
+    status_code = 200
+  )
+  
+  # Mock the package API response with no current version
+  mock_package_response <- list(
     content = charToRaw(enc2utf8('{
-      "archived": [{"version": "1.0.0"}, {"version": "1.1.0"}]
+      "archived": [{"version": "1.0.0", "date": "2023-01-01"}, {"version": "1.1.0", "date": "2023-06-01"}]
     }')),
     status_code = 200
   )
   
-  mock_curl_fetch_memory <- mockery::mock(mock_response)
+  mock_curl_fetch_memory <- mockery::mock(
+    mock_repos_response,  
+    mock_package_response 
+  )
+  
   local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
+  result <- get_internal_package_url("mockpackage", "2.0.0", base_url="https://rstudio-pm.com")
   
-  result <- get_internal_package_url("mockpackage", "1.0.0")
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[1]], 
+    list("https://rstudio-pm.com/__api__/repos/")
+  )
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[2]], 
+    list("https://rstudio-pm.com/__api__/repos/6/packages/mockpackage")
+  )
   
-  # Validate the result
   expect_null(result$url)
   expect_null(result$last_version)
-  expect_equal(result$all_versions, c("1.0.0", "1.1.0"))
+  expect_equal(result$all_versions, list())
+  expect_null(result$repo_id)
+  expect_null(result$repo_name)
+})
+
+test_that("get_internal_package_url returns NULLs when no last version exists and no version params", {
+  mock_response <- list(
+    content = charToRaw(enc2utf8('{
+      "archived": [{"version": "1.0.0", "date": "2023-01-01"}, {"version": "1.1.0", "date": "2023-06-01"}]
+    }')),
+    status_code = 200
+  )
+
+  mock_curl_fetch_memory <- mockery::mock(mock_response)
+  local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
+  result <- get_internal_package_url("mockpackage", base_url="https://rstudio-pm.com")
+  expect_null(result$url)
+  expect_null(result$last_version)
+  expect_equal(result$all_versions, list())
 })
 
 test_that("get_internal_package_url works correctly when no archived versions exist", {
-  mock_response <- list(
+  
+  mock_repos_response <- list(
+    content = charToRaw(enc2utf8('[
+      {"id": 6, "name": "art-git"},
+      {"id": 1, "name": "prod-cran"}
+    ]')),
+    status_code = 200
+  )
+  
+  mock_package_response <- list(
     content = charToRaw(enc2utf8('{
-      "version": "1.2.0"
+      "version": "1.2.0",
+      "date_publication": "2024-01-01T12:00:00+01:00"
     }')),
     status_code = 200
   )
   
-  mock_curl_fetch_memory <- mockery::mock(mock_response)
+  mock_curl_fetch_memory <- mockery::mock(
+    mock_repos_response,  
+    mock_package_response 
+  )
+  
   local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
+  result <- get_internal_package_url("mockpackage", "1.2.0", base_url="https://rstudio-pm.com")
   
-  result <- get_internal_package_url("mockpackage", "1.2.0")
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[1]], 
+    list("https://rstudio-pm.com/__api__/repos/")
+  )
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[2]], 
+    list("https://rstudio-pm.com/__api__/repos/6/packages/mockpackage")
+  )
   
-  # Validate the result
-  expect_equal(result$url, "http://cran.us.r-project.org/src/contrib/mockpackage_1.2.0.tar.gz")
-  expect_equal(result$last_version, "1.2.0")
-  expect_equal(result$all_versions, c("1.2.0"))
+  # Verify the result
+  expect_equal(result$url, "https://rstudio-pm.com/art-git/latest/src/contrib/mockpackage_1.2.0.tar.gz")
+  expect_equal(result$last_version$version, "1.2.0")
+  expect_equal(result$all_versions, list(
+    list(version = "1.2.0", date = as.Date("2024-01-01"))
+  ))
+  expect_equal(result$repo_id, c("art-git" = 6))
+  expect_equal(result$repo_name, "art-git")
 })
 
-test_that("empty response is handled correctly", {
+
+test_that("get_internal_package_url handles empty API response", {
   mock_response <- list(
     content = raw(0),
     status_code = 200
   )
-  
+
   mock_curl_fetch_memory <- mockery::mock(mock_response)
   local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
-  
+
   result <- get_internal_package_url("mockpackage")
-  
-  # Validate the result
+
   expect_null(result$url)
   expect_null(result$last_version)
   expect_equal(result$all_versions, list())
 })
 
-test_that("invalid JSON response is handled correctly", {
+test_that("get_internal_package_url handles invalid JSON response", {
   mock_response <- list(
     content = charToRaw("Invalid JSON"),
     status_code = 200
   )
-  
+
   mock_curl_fetch_memory <- mockery::mock(mock_response)
   local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
-  
+
   result <- get_internal_package_url("mockpackage")
-  
-  # Validate the result
+
   expect_null(result$url)
   expect_null(result$last_version)
   expect_equal(result$all_versions, list())
 })
 
-test_that("API returns 404 (package not found)", {
+test_that("get_internal_package_url handles 404 (package not found)", {
   mock_response <- list(
     content = charToRaw("Not Found"),
-    status_code = 404 
+    status_code = 404
   )
-  
+
   mock_curl_fetch_memory <- mockery::mock(mock_response)
   local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
-  
+
   result <- get_internal_package_url("nonexistentpackage")
-  
-  # Validate the result
+
   expect_null(result$url)
   expect_null(result$last_version)
   expect_equal(result$all_versions, list())
 })
 
 
+test_that("get_internal_package_url handles NULL base_url and missing INTERNAL_RSPM option", {
+  
+  old_repos <- options("repos")
+  on.exit(options(repos = old_repos$repos))
+  
+  options(repos = NULL)
+  
+  expect_message(
+    result <- get_internal_package_url("mockpackage"),
+    "NO INTERNAL_RSPM FOUND"
+  )
+  
+  expect_null(result$url)
+  expect_null(result$last_version)
+  expect_equal(result$all_versions, list())
+  expect_null(result$repo_id)
+  expect_null(result$repo_name)
+})
+
+test_that("get_internal_package_url handles repos without INTERNAL_RSPM", {
+  
+  old_repos <- options("repos")
+  on.exit(options(repos = old_repos$repos))
+  
+  # Set repos without INTERNAL_RSPM
+  options(repos = c(CRAN = "https://cloud.r-project.org"))
+  
+  expect_message(
+    result <- get_internal_package_url("mockpackage"),
+    "NO INTERNAL_RSPM FOUND"
+  )
+  
+  expect_null(result$url)
+  expect_null(result$last_version)
+  expect_equal(result$all_versions, list())
+  expect_null(result$repo_id)
+  expect_null(result$repo_name)
+})
+
+test_that("get_internal_package_url handles failure in first API call", {
+
+  mock_curl_fetch_memory <- mockery::mock(NULL)
+  local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
+  
+  result <- get_internal_package_url("mockpackage", base_url="https://rstudio-pm.com")
+  
+  # Verify the mock was called
+  expect_equal(length(mockery::mock_args(mock_curl_fetch_memory)), 1)
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[1]], 
+    list("https://rstudio-pm.com/__api__/repos/")
+  )
+  
+  # Verify the result
+  expect_null(result$url)
+  expect_null(result$last_version)
+  expect_equal(result$all_versions, list())
+  expect_null(result$repo_id)
+  expect_null(result$repo_name)
+})
+
+test_that("get_internal_package_url handles failure in second API call", {
+  # Mock the repos API response
+  mock_repos_response <- list(
+    content = charToRaw(enc2utf8('[
+      {"id": 6, "name": "art-git"},
+      {"id": 1, "name": "prod-cran"}
+    ]')),
+    status_code = 200
+  )
+  
+  mock_curl_fetch_memory <- mockery::mock(
+    mock_repos_response,  
+    NULL                  
+  )
+  local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
+  
+  result <- get_internal_package_url("mockpackage", base_url="https://rstudio-pm.com")
+  
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[1]], 
+    list("https://rstudio-pm.com/__api__/repos/")
+  )
+  
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[2]], 
+    list("https://rstudio-pm.com/__api__/repos/6/packages/mockpackage")
+  )
+  
+  expect_null(result$url)
+  expect_null(result$last_version)
+  expect_equal(result$all_versions, list())
+  expect_null(result$repo_id)
+  expect_null(result$repo_name)
+})
+
+
+test_that("get_internal_package_url handles failure in all package API calls", {
+  # Mock the repos API response
+  mock_repos_response <- list(
+    content = charToRaw(enc2utf8('[
+      {"id": 6, "name": "art-git"},
+      {"id": 1, "name": "prod-cran"}
+    ]')),
+    status_code = 200
+  )
+  
+  # Mock package API responses (all fail)
+  mock_package_response_fail <- list(
+    content = charToRaw("Not Found"),
+    status_code = 404
+  )
+  
+  # Mock curl_fetch_memory to succeed on first call but return 404 on subsequent calls
+  mock_curl_fetch_memory <- mockery::mock(
+    mock_repos_response,        # First call succeeds
+    mock_package_response_fail, # First package call fails
+    mock_package_response_fail  # Second package call fails
+  )
+  local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
+  
+  result <- get_internal_package_url("mockpackage", base_url="https://rstudio-pm.com")
+  
+  # Verify the mock was called three times
+  expect_equal(length(mockery::mock_args(mock_curl_fetch_memory)), 3)
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[1]], 
+    list("https://rstudio-pm.com/__api__/repos/")
+  )
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[2]], 
+    list("https://rstudio-pm.com/__api__/repos/6/packages/mockpackage")
+  )
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[3]], 
+    list("https://rstudio-pm.com/__api__/repos/1/packages/mockpackage")
+  )
+  
+  # Verify the result
+  expect_null(result$url)
+  expect_null(result$last_version)
+  expect_equal(result$all_versions, list())
+  expect_null(result$repo_id)
+  expect_null(result$repo_name)
+})
 
 # get_host_package
-
 
 test_that("get_host_package returns correct links for valid inputs", {
   # Mock description$new
@@ -779,17 +1128,20 @@ test_that("get_host_package returns correct links for valid inputs", {
       if (field == "BugReports") "https://github.com/owner1/mockpackage/issues"
     }
   ))
-  
+
   # Stub description$new
   mockery::stub(get_host_package, "description$new", mock_description)
-  
+
   # Mock other dependencies
   mock_check_cran_package <- mockery::mock(TRUE)
   mock_parse_package_info <- mockery::mock("<html>Mock Archive Content</html>")
   mock_parse_html_version <- mockery::mock(list(
     list(package_version = "1.0.0"),
     list(package_version = "1.1.0")
-  ))
+  ),
+  cycle = TRUE
+  )
+
   mock_check_and_fetch_cran_package <- mockery::mock(list(
     last_version = "1.1.0",
     all_versions = c("1.0.0", "1.1.0")
@@ -800,7 +1152,7 @@ test_that("get_host_package returns correct links for valid inputs", {
     last_version = "1.1.0",
     all_versions = c("1.0.0", "1.1.0")
   ))
-  
+
   # Use local_mocked_bindings for other dependencies
   with_mocked_bindings(
     check_cran_package = mock_check_cran_package,
@@ -812,12 +1164,12 @@ test_that("get_host_package returns correct links for valid inputs", {
     {
       # Call the function with mocked dependencies
       result <- get_host_package("mockpackage", "1.1.0", "/path/to/source")
-      
+
       # Validate the result
       expect_equal(result$github_links, "https://github.com/owner1/mockpackage")
       expect_equal(result$cran_links, "https://cran.r-project.org/src/contrib/mockpackage_1.1.0.tar.gz")
       expect_equal(result$internal_links, "https://rstudio-pm.prod.example.com/mockpackage_1.1.0.tar.gz")
-      expect_equal(result$bioconductor_links, "No Bioconductor link found")
+      expect_null(result$bioconductor_links)
     }
   )
 })
@@ -832,17 +1184,20 @@ test_that("get_host_package with github name and CRAN name different", {
       if (field == "BugReports") "https://github.com/ow-ner1/mockpackage_no_cran/issues"
     }
   ))
-  
+
   # Stub description$new
   mockery::stub(get_host_package, "description$new", mock_description)
-  
+
   # Mock other dependencies
   mock_check_cran_package <- mockery::mock(TRUE)
   mock_parse_package_info <- mockery::mock("<html>Mock Archive Content</html>")
   mock_parse_html_version <- mockery::mock(list(
     list(package_version = "1.0.0"),
     list(package_version = "1.1.0")
-  ))
+  ),
+  cycle = TRUE
+  )
+
   mock_check_and_fetch_cran_package <- mockery::mock(list(
     last_version = "1.1.0",
     all_versions = c("1.0.0", "1.1.0")
@@ -853,7 +1208,7 @@ test_that("get_host_package with github name and CRAN name different", {
     last_version = "1.1.0",
     all_versions = c("1.0.0", "1.1.0")
   ))
-  
+
   # Use local_mocked_bindings for other dependencies
   with_mocked_bindings(
     check_cran_package = mock_check_cran_package,
@@ -865,15 +1220,16 @@ test_that("get_host_package with github name and CRAN name different", {
     {
       # Call the function with mocked dependencies
       result <- get_host_package("mockpackage", "1.1.0", "/path/to/source")
-      
+
       # Validate the result
       expect_equal(result$github_links, "https://github.com/ow-ner1/mockpackage_no_cran")
       expect_equal(result$cran_links, "https://cran.r-project.org/src/contrib/mockpackage_1.1.0.tar.gz")
       expect_equal(result$internal_links, "https://rstudio-pm.prod.example.com/mockpackage_1.1.0.tar.gz")
-      expect_equal(result$bioconductor_links, "No Bioconductor link found")
+      expect_null(result$bioconductor_links)
     }
   )
 })
+
 
 test_that("get_host_package with no github link, no bug report", {
   # Mock description$new
@@ -885,17 +1241,19 @@ test_that("get_host_package with no github link, no bug report", {
       if (field == "BugReports") ""
     }
   ))
-  
+
   # Stub description$new
   mockery::stub(get_host_package, "description$new", mock_description)
-  
+
   # Mock other dependencies
   mock_check_cran_package <- mockery::mock(TRUE)
   mock_parse_package_info <- mockery::mock("<html>Mock Archive Content</html>")
   mock_parse_html_version <- mockery::mock(list(
     list(package_version = "1.0.0"),
     list(package_version = "1.1.0")
-  ))
+  ),
+  cycle = TRUE
+  )
   mock_check_and_fetch_cran_package <- mockery::mock(list(
     last_version = "1.1.0",
     all_versions = c("1.0.0", "1.1.0")
@@ -906,7 +1264,7 @@ test_that("get_host_package with no github link, no bug report", {
     last_version = "1.1.0",
     all_versions = c("1.0.0", "1.1.0")
   ))
-  
+
   # Use local_mocked_bindings for other dependencies
   with_mocked_bindings(
     check_cran_package = mock_check_cran_package,
@@ -918,15 +1276,16 @@ test_that("get_host_package with no github link, no bug report", {
     {
       # Call the function with mocked dependencies
       result <- get_host_package("mockpackage", "1.1.0", "/path/to/source")
-      
+
       # Validate the result
-      expect_equal(result$github_links, "No GitHub link found")
+      expect_null(result$github_links)
       expect_equal(result$cran_links, "https://cran.r-project.org/src/contrib/mockpackage_1.1.0.tar.gz")
       expect_equal(result$internal_links, "https://rstudio-pm.prod.example.com/mockpackage_1.1.0.tar.gz")
-      expect_equal(result$bioconductor_links, "No Bioconductor link found")
+      expect_null(result$bioconductor_links)
     }
   )
 })
+
 
 test_that("get_host_package with github name, but not bug report", {
   # Mock description$new
@@ -938,28 +1297,32 @@ test_that("get_host_package with github name, but not bug report", {
       if (field == "BugReports") "https://github.com/ow-ner1/mockpackage_no_cran/issues"
     }
   ))
-  
+
   # Stub description$new
   mockery::stub(get_host_package, "description$new", mock_description)
-  
+
   # Mock other dependencies
   mock_check_cran_package <- mockery::mock(TRUE)
   mock_parse_package_info <- mockery::mock("<html>Mock Archive Content</html>")
   mock_parse_html_version <- mockery::mock(list(
     list(package_version = "1.0.0"),
     list(package_version = "1.1.0")
-  ))
+  ),
+  cycle = TRUE
+  )
+
   mock_check_and_fetch_cran_package <- mockery::mock(list(
     last_version = "1.1.0",
     all_versions = c("1.0.0", "1.1.0")
   ))
+
   mock_get_cran_package_url <- mockery::mock("https://cran.r-project.org/src/contrib/mockpackage_1.1.0.tar.gz")
   mock_get_internal_package_url <- mockery::mock(list(
     url = "https://rstudio-pm.prod.example.com/mockpackage_1.1.0.tar.gz",
     last_version = "1.1.0",
     all_versions = c("1.0.0", "1.1.0")
   ))
-  
+
   # Use local_mocked_bindings for other dependencies
   with_mocked_bindings(
     check_cran_package = mock_check_cran_package,
@@ -971,15 +1334,16 @@ test_that("get_host_package with github name, but not bug report", {
     {
       # Call the function with mocked dependencies
       result <- get_host_package("mockpackage", "1.1.0", "/path/to/source")
-      
+
       # Validate the result
       expect_equal(result$github_links, "https://github.com/ow-ner1/mockpackage_no_cran")
       expect_equal(result$cran_links, "https://cran.r-project.org/src/contrib/mockpackage_1.1.0.tar.gz")
       expect_equal(result$internal_links, "https://rstudio-pm.prod.example.com/mockpackage_1.1.0.tar.gz")
-      expect_equal(result$bioconductor_links, "No Bioconductor link found")
+      expect_null(result$bioconductor_links)
     }
   )
 })
+
 
 test_that("get_host_package with no github name, but bug report", {
   # Mock description$new
@@ -991,17 +1355,19 @@ test_that("get_host_package with no github name, but bug report", {
       if (field == "BugReports") ""
     }
   ))
-  
+
   # Stub description$new
   mockery::stub(get_host_package, "description$new", mock_description)
-  
+
   # Mock other dependencies
   mock_check_cran_package <- mockery::mock(TRUE)
   mock_parse_package_info <- mockery::mock("<html>Mock Archive Content</html>")
   mock_parse_html_version <- mockery::mock(list(
     list(package_version = "1.0.0"),
     list(package_version = "1.1.0")
-  ))
+  ),
+  cycle = TRUE
+  )
   mock_check_and_fetch_cran_package <- mockery::mock(list(
     last_version = "1.1.0",
     all_versions = c("1.0.0", "1.1.0")
@@ -1012,7 +1378,7 @@ test_that("get_host_package with no github name, but bug report", {
     last_version = "1.1.0",
     all_versions = c("1.0.0", "1.1.0")
   ))
-  
+
   # Use local_mocked_bindings for other dependencies
   with_mocked_bindings(
     check_cran_package = mock_check_cran_package,
@@ -1024,12 +1390,12 @@ test_that("get_host_package with no github name, but bug report", {
     {
       # Call the function with mocked dependencies
       result <- get_host_package("mockpackage", "1.1.0", "/path/to/source")
-      
+
       # Validate the result
       expect_equal(result$github_links, "https://github.com/ow-ner1/mockpackage_no_cran")
       expect_equal(result$cran_links, "https://cran.r-project.org/src/contrib/mockpackage_1.1.0.tar.gz")
       expect_equal(result$internal_links, "https://rstudio-pm.prod.example.com/mockpackage_1.1.0.tar.gz")
-      expect_equal(result$bioconductor_links, "No Bioconductor link found")
+      expect_null(result$bioconductor_links)
     }
   )
 })

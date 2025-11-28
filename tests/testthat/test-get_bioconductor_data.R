@@ -186,8 +186,9 @@ test_that("fetch_bioconductor_package_info returns only main version when no arc
   mockery::stub(fetch_bioconductor_package_info, "xml2::read_html", local_read_html)
   
   result <- fetch_bioconductor_package_info("3.20", "noarchive")
+  
   expect_type(result, "list")
-  expect_length(result, 2)
+  expect_length(result, 1)
   expect_equal(result[[1]]$source_package, "https://bioconductor.org/packages/3.20/bioc/src/contrib/noarchive_2.10.0.tar.gz")
   expect_equal(result[[1]]$version, "2.10.0")
 })
@@ -261,95 +262,54 @@ mock_fetch_bioconductor_package_info <- function(bioconductor_version, package_n
 }
 
 # Test cases
+
+release_data <- list(
+  list(release = "3.17", date = "October 14, 2005"),
+  list(release = "3.18", date = "October 4, 2006"),
+  list(release = "3.19", date = "October 8, 2007")
+)
+
 test_that("get_bioconductor_package_url returns correct URL for DESeq2", {
-  # Mock Bioconductor releases
-  release_data <- list(
-    list(release = "3.17"),
-    list(release = "3.18"),
-    list(release = "3.19")
-  )
 
-  # Stub the fetch function
   mockery::stub(get_bioconductor_package_url, "fetch_bioconductor_package_info", mock_fetch_bioconductor_package_info)
-
-  # Call function
   result <- get_bioconductor_package_url("DESeq2", release_data = release_data)
 
-  # Expected URL
   expected_url <- "https://bioconductor.org/packages/3.19/bioc/src/contrib/DESeq2_1.38.0.tar.gz"
-
-  # Assertions
   expect_equal(result$url, expected_url)
   expect_equal(result$version, "1.38.0")
   expect_false(result$archived)
+  expect_type(result$all_versions, "list")
 })
 
 test_that("get_bioconductor_package_url returns correct URL for older package version", {
-  # Mock Bioconductor releases
-  release_data <- list(
-    list(release = "3.16"),
-    list(release = "3.17"),
-    list(release = "3.18")
-  )
-
-  # Stub the fetch function
+  
   mockery::stub(get_bioconductor_package_url, "fetch_bioconductor_package_info", mock_fetch_bioconductor_package_info)
-
-  # Call function for an older version of edgeR
   result <- get_bioconductor_package_url("edgeR", package_version = "3.40.2", release_data = release_data)
 
-  # Expected URL
-  expected_url <- "https://bioconductor.org/packages/3.18/bioc/src/contrib/edgeR_3.40.2.tar.gz"
-
-  # Assertions
+  expected_url <- "https://bioconductor.org/packages/3.19/bioc/src/contrib/edgeR_3.40.2.tar.gz"
   expect_equal(result$url, expected_url)
   expect_equal(result$version, "3.40.2")
+  expect_type(result$all_versions, "list")
 })
 
 test_that("get_bioconductor_package_url returns NULL for non-existing package", {
-  # Mock Bioconductor releases
-  release_data <- list(
-    list(release = "3.17"),
-    list(release = "3.18"),
-    list(release = "3.19")
-  )
 
-  # Stub the fetch function
   mockery::stub(get_bioconductor_package_url, "fetch_bioconductor_package_info", mock_fetch_bioconductor_package_info)
-
-  # Expect a warning
-  expect_warning(
-    result <- get_bioconductor_package_url("NonExistentPackage", release_data = release_data)
-  )
-
-  # Assertions
+  result <- get_bioconductor_package_url("NonExistentPackage", release_data = release_data)
+  
   expect_null(result$url)
   expect_null(result$version)
 })
 
 test_that("get_bioconductor_package_url handles errors gracefully", {
-  # Define a mock function that simulates an error
+  
   mock_fetch_error <- function(bioconductor_version, package_name) {
     stop("Simulated error")
   }
 
-  # Mock Bioconductor releases
-  release_data <- list(
-    list(release = "3.17"),
-    list(release = "3.18"),
-    list(release = "3.19")
-  )
-
-  # Stub the fetch function with the error simulation
   mockery::stub(get_bioconductor_package_url, "fetch_bioconductor_package_info", mock_fetch_error)
-
-  # Expect a warning
-  expect_warning(
-    result <- get_bioconductor_package_url("DESeq2", release_data = release_data)
-  )
-
-  # Assertions
-  expect_warning(get_bioconductor_package_url("DESeq2", release_data = release_data))
+  result <- get_bioconductor_package_url("DESeq2", release_data = release_data)
+  
   expect_null(result$url)
   expect_null(result$version)
 })

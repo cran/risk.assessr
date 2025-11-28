@@ -21,7 +21,7 @@ get_suggested_exp_funcs <- function(data) {
   
   if (nrow(data) != 0) { 
     
-    # Use lapply to iterate over each package and get the exported functions
+  # Use lapply to iterate over each package and get the exported functions
     result <- lapply(data$package, function(pkg) {
       tryCatch({
         exports <- getNamespaceExports(pkg)
@@ -57,6 +57,6 @@ get_suggested_exp_funcs <- function(data) {
       stringsAsFactors = FALSE
     )
   }
-  
+
   return(result_df)
 }

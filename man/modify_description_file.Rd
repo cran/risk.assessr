@@ -19,7 +19,6 @@ by appending Config/build/clean-inst-doc: false parameter.
 \examples{
 \dontrun{
   modified_tar <- modify_description_file("path/to/mypackage.tar.gz")
-  print(modified_tar)
 }
 
 }

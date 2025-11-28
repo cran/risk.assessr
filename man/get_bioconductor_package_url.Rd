@@ -18,30 +18,27 @@ get_bioconductor_package_url(
 \item{release_data}{A list containing Bioconductor release information.}
 }
 \value{
-A list containing the following elements:
+A list containing:
  \item{url}{The URL of the source package (if available).}
  \item{version}{The specified or latest available package version.}
- \item{last_version}{The last available version of the package.}
- \item{all_versions}{A vector of all discovered versions of the package.}
- \item{bioconductor_version_package}{The Bioconductor version associated with the package.}
+ \item{last_version}{A list with version, date, and Bioconductor version.}
+ \item{all_versions}{A list of all discovered versions with version, date, and Bioconductor version.}
+ \item{bioconductor_version_package}{The Bioconductor version matched to the selected version.}
  \item{archived}{A logical value indicating whether the package is archived.}
 }
 \description{
 This function fetches the source package URL for a given Bioconductor package.
 If no version is specified, it retrieves the latest available version.
-Currently, this function is not able to fetch archived package version for a bioconductor version
 }
 \examples{
 \dontrun{
 release_data <- list(
-  list(release = "3.12"),
-  list(release = "3.13"),
-  list(release = "3.14")
+  list(release = "3.17", date = "October 14, 2005"),
+  list(release = "3.18", date = "October 4, 2006"),
+  list(release = "3.19", date = "October 8, 2007")
 )
 
 get_bioconductor_package_url("GenomicRanges", release_data = release_data)
-
-
 
 }
 }

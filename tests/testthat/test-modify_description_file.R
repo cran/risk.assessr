@@ -40,7 +40,7 @@ test_that("modify_description_file modifies DESCRIPTION correctly", {
 
   # Check if the DESCRIPTION file contains the new line
   description_content <- readLines(description_file)
-  expect_true("Config/build/clean-inst-doc: FALSE" %in% description_content)
+  expect_true("Config/build/clean-inst-doc: false" %in% description_content)
 
   # Clean up temporary files
   withr::defer(unlink(temp_file))  # Remove the temporary tar file
@@ -90,7 +90,7 @@ test_that("modify_description_file modifies DESCRIPTION correctly 1bis", {
 
   # Check if the DESCRIPTION file contains the new line
   description_content <- readLines(description_file)
-  expect_true("Config/build/clean-inst-doc: FALSE" %in% description_content)
+  expect_true("Config/build/clean-inst-doc: false" %in% description_content)
 
   # Clean up temporary files
   withr::defer(unlink(temp_file))  # Remove the temporary tar file
@@ -127,7 +127,7 @@ test_that("modify_description_file modifies DESCRIPTION correctly 2", {
   
   # Check if the DESCRIPTION file contains the new line
   description_content <- readLines(description_file)
-  expect_true("Config/build/clean-inst-doc: FALSE" %in% description_content)
+  expect_true("Config/build/clean-inst-doc: false" %in% description_content)
   
   # Ensure cleanup happens even if the test fails
   withr::defer(unlink(temp_dir_create, recursive = TRUE))
@@ -178,7 +178,10 @@ test_that("Config/build/clean-inst-doc: false already in DESCRIPTION file", {
 
   # Check if the DESCRIPTION file contains the expected content
   description_content <- readLines(description_file)
-  config_line_count <- sum(grepl("Config/build/clean-inst-doc: FALSE", description_content))
+  config_line_count <- sum(grepl("Config/build/clean-inst-doc: false",
+                                 description_content,
+                                 ignore.case = TRUE))
+  
   expect_equal(config_line_count, 1)
 
   # Clean up temporary files
@@ -258,3 +261,47 @@ test_that("Error in tarring the file", {
                "Error in creating the tar.gz file: Tar failed")
 
 })
+
+
+
+test_that("insensitive case", {
+  
+  # Create a temporary directory for the package
+  temp_dir_create <- tempdir()
+  
+  # Create a fake package directory structure
+  package_name <- "test.package.0001"
+  package_dir <- file.path(temp_dir_create, package_name)
+  dir.create(package_dir)
+  
+  # Path to the DESCRIPTION file in the package directory
+  description_file <- file.path(package_dir, "DESCRIPTION")
+  writeLines("Config/build/clean-inst-doc: false", description_file)
+  
+  # Create the .tar Archive with only the necessary files
+  tar_file <- file.path(temp_dir_create, "my_package.tar.gz")
+  suppressWarnings(tar(tar_file, files = temp_dir_create, compression = "gzip", tar = "internal"))
+  
+  # Mock the tar function to simulate an error during the tarring process
+  mock_tar <- mockery::mock(stop("Tar failed"))
+  mockery::stub(modify_description_file, "tar", mock_tar)
+  
+  # Ensure cleanup happens even if the test fails
+  withr::defer(unlink(temp_dir_create, recursive = TRUE))
+  withr::defer(unlink(tar_file))
+  
+  # Check if the DESCRIPTION file contains the new line
+  description_content <- readLines(description_file)
+  config_line_count <- sum(grepl("Config/build/clean-inst-doc: false",
+                                 description_content,
+                                 ignore.case = TRUE))
+  expect_equal(config_line_count, 1)
+  expect_true("Config/build/clean-inst-doc: false" %in% description_content)
+})
+
+
+
+
+
+
+

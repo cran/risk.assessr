@@ -19,8 +19,6 @@ simplified input to assess package for risk metrics
 \dontrun{
 risk_assess_package <- risk_assess_pkg()
 
-OR
-
 risk_assess_package <- risk_assess_pkg(path/to/package.tar.gz)
 }
 }

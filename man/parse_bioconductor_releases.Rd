@@ -22,6 +22,6 @@ release announcements HTML page.
 \dontrun{
 html_content <- fetch_bioconductor_releases()
 release_data <- parse_bioconductor_releases(html_content)
-
+print(release_data)
 }
 }

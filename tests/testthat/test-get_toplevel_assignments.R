@@ -42,7 +42,6 @@ test_that("get_toplevel_assignments works correctly", {
   mockery::stub(get_toplevel_assignments, "tools::list_files_with_type", mock_list_files_with_type_empty)
   
   messages <- capture_messages(result <- get_toplevel_assignments(pkg_name))
-  print(messages)
   expect_true(any(grepl(glue::glue("No sourceable R scripts were found in the R/ directory for package {pkg_name}. Make sure this was expected."), messages)))
   expect_equal(nrow(result), 0)
 })

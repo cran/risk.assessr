@@ -7,17 +7,31 @@
 get_versions(table, package_name)
 }
 \arguments{
-\item{table}{A list of parsed package data, where each element contains package details including package_version.}
+\item{table}{A list of parsed package data (e.g., from `parse_html_version()`), where each element contains package details such as `package_version` and `date`.}
 
 \item{package_name}{A character string specifying the name of the package to fetch versions for.}
 }
 \value{
-A list containing:
-  - `all_versions`: A character vector of all unique package versions.
-  - `last_version`: A character string of the latest version fetched from the RStudio Package Manager, or `NULL` if not available.
+A list with the following elements:
+\describe{
+  \item{all_versions}{A list of named lists, each containing:
+    \describe{
+      \item{version}{The version number of the package.}
+      \item{date}{The associated publication date as a string.}
+    }
+  }
+  \item{last_version}{A named list containing the latest version of the package with:
+    \describe{
+      \item{version}{The latest version number.}
+      \item{date}{The publication date of the latest version.}
+    }
+    May be \code{NULL} if the API call fails.
+  }
+}
 }
 \description{
-This function retrieves all available versions including last version from parse_html_version function'
+This function retrieves all available versions of a package, including the latest version,
+by parsing the provided version table and querying the RStudio Package Manager.
 }
 \examples{
 \dontrun{
@@ -39,10 +53,8 @@ table <- list(
   )
 )
 
-# Use the get_versions function
 result <- get_versions(table, "here")
-
-# Example output
 print(result)
 }
+
 }

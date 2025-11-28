@@ -4,12 +4,7 @@
 \alias{get_internal_package_url}
 \title{Get Internal Package URL}
 \usage{
-get_internal_package_url(
-  package_name,
-  version = NULL,
-  base_url = "http://cran.us.r-project.org",
-  internal_path = "/src/contrib/"
-)
+get_internal_package_url(package_name, version = NULL, base_url = NULL)
 }
 \arguments{
 \item{package_name}{A character string specifying the name of the package.}
@@ -17,25 +12,23 @@ get_internal_package_url(
 \item{version}{An optional character string specifying the version of the package.
 Defaults to `NULL`, in which case the latest version will be used.}
 
-\item{base_url}{a character string of internal package manager link}
-
-\item{internal_path}{a character string of internal package mirror link}
+\item{base_url}{A character string specifying the base URL of the internal package manager.}
 }
 \value{
 A list containing:
   - `url`: A character string of the package URL (or `NULL` if not found).
-  - `last_version`: A character string of the latest version of the package.
-  - `all_versions`: A character vector of all available package versions.
+  - `last_version`: A list with `version` and `date` of the latest version (or `NULL`).
+  - `version`: The version used to generate the URL (or `NULL`).
+  - `all_versions`: A list of all available versions, each as a list with `version` and `date`.
 }
 \description{
-This function retrieves the URL of an internal package on your internal Mirror, its latest version, 
+This function retrieves the URL of an internal package on Mirror, its latest version, 
 and a list of all available versions.
 }
 \examples{
 \dontrun{
-
-# Retrieve a specific version URL of a package
 result <- get_internal_package_url("internalpackage", version = "1.0.1")
-print(result) 
+print(result)
 }
+
 }

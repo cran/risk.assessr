@@ -1,39 +1,32 @@
-
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# risk.assessr <a><img src="man/figures/logo.png" align="right" height="138" /></a>
+# risk.assessr <a><img src="man/figures/logo.png" align="right" height="138"/></a>
 
 <!-- badges: start -->
-
-![R-CMD-check](https://img.shields.io/badge/Test%20coverage-Passing-brightgreen.svg)
-![Coverage](https://img.shields.io/badge/R%20CMD%20check-Passing-brightgreen.svg)
-[<img src="http://pharmaverse.org/shields/risk.assessr.svg">](https://pharmaverse.org)
-![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen.svg)
+![R-CMD-check](https://img.shields.io/badge/R%20CMD%20check-Passing-brightgreen.svg)
+![Test Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen.svg)
+![Pharmaverse](http://pharmaverse.org/shields/risk.assessr.svg)
 <!-- badges: end -->
+
+# risk.assessr
 
 # Overview
 
-risk.assessr helps in the initial determining of a package’s reliability and
-security in terms of maintenance, documentation, and dependencies.
+risk.assessr helps in the initial determining of a package's reliability and security in terms of maintenance, documentation, and dependencies.
 
-This package is designed to carry out a risk assessment of R packages at
-the beginning of the validation process (either internal or open source).
+This package is designed to carry out a risk assessment of R packages at the beginning of the validation process (either internal or open source).
 
 It calculates risk metrics such as:
 
-**Core metrics** - includes R command check, unit test coverage and
-composite coverage of dependencies
+**Core metrics** - includes R command check, unit test coverage and composite coverage of dependencies
 
-**Documentation metrics** - availability of vignettes, news tracking,
-example(s), return object description for exported functions, and type
-of license
+**Documentation metrics** - availability of vignettes, news tracking, example(s), return object description for exported functions, and type of license
 
 **Dependency Metrics** - package dependencies and reverse dependencies
 
 It also calculates a:
 
-**Traceability matrix** - matching the function / test descriptions to
-tests and match to test pass/fail
+**Traceability matrix** - matching the function / test descriptions to tests and match to test pass/fail
 
 # Description
 
@@ -57,41 +50,47 @@ This package executes the following tasks:
 
 This package fixes a number of errors in `pharmaR/riskmetric`
 
-1.  running R CMD check and code coverage with locally installed
-    packages
+1.  running R CMD check and code coverage with locally installed packages
 2.  user defined weighting works
 3.  `Suggests` added to checking dependencies
-4.  `assess_dependencies` and `assess_reverse_dependencies` has sigmoid
-    point increased
-5.  `assess_dependencies` has value range changed to fit in with other
-    scoring metrics
+4.  `assess_dependencies` and `assess_reverse_dependencies` has sigmoid point increased
+5.  `assess_dependencies` has value range changed to fit in with other scoring metrics
 
+# Package Installation
 
-# Installation
+## from [Github](https://github.com/Sanofi-Public/risk.assessr)
 
-- Create a `Personal Access Token` (PAT) on `github`
+-   Create a `Personal Access Token` (PAT) on `github`
 
-  - Log into your `github` account
-  - Go to the token settings URL using the [Token Settings
-    URL](https://github.com/settings/tokens)
-    - (do not forget to add the SSH `Sanofi-Public` authorization)
+    -   Log into your `github` account
+    -   Go to the token settings URL using the [Token Settings URL](https://github.com/settings/tokens)
 
-- Create a `.Renviron` file with your GITHUBTOKEN as:
+-   Create a `.Renviron` file with your GITHUBTOKEN as:
 
 <!-- -->
 
-    # .Renviron
-    GITHUBTOKEN=dfdxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxfdf
+```         
+# .Renviron
+GITHUBTOKEN=dfdxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxfdf
+```
 
-- restart R session
-- You can install the package with:
+-   restart R session
+-   You can install the package with:
 
 <!-- -->
 
-    auth_token = Sys.getenv("GITHUBTOKEN")
-    devtools::install_github("Sanofi-Public/risk.assessr", ref = "main", auth_token = auth_token)
-    
-    
+```         
+auth_token = Sys.getenv("GITHUBTOKEN")
+devtools::install_github("Sanofi-Public/risk.assessr", ref = "main", auth_token = auth_token)
+```
+
+## from [CRAN](https://CRAN.R-project.org/package=risk.assessr)
+
+``` r
+options(repos = "http://cran.us.r-project.org")
+installed.packages(risk.asssessr)
+```
+
 # Usage
 
 ## Assessing your own package
@@ -100,11 +99,24 @@ To assess your package, do the following steps:
 
 1 - save your package as a `tar.gz` file
 
-- This can be done in `RStudio` -\> `Build Tab` -\> `More` -\>
-  `Build Source Package`
+-   This can be done in `RStudio` -\> `Build Tab` -\> `More` -\> `Build Source Package`
 
-2 - Run the following code sample by loading or add path parameter to your
-`tar.gz` package source code
+2 - Run the following code sample by loading or add path parameter to your `tar.gz` package source code
+
+Set repository options
+
+``` r
+options(repos = c(
+  RSPM = "http://cran.us.r-project.org",
+  INTERNAL_RSPM = "<your_internal_RSPM>"
+))
+```
+
+This sets up repository sources for R packages allows you to access both public (CRAN/Bioconductor) and internal packages
+
+When you install or load packages, R will:
+
+First check the RSPM repository for CRAN/Bioconductor packages Then look in the INTERNAL repository for internal-specific packages Finally, search INTERNAL_RSPM if packages aren't found in the previous locations
 
 ``` r
 # for local tar.gz R package
@@ -120,11 +132,10 @@ This function processes `renv.lock` to produce risk metric data for each package
 ``` r
 # for local renv.lock file
 
-risk_assess_package <- risk_assess_pkg(path/to/your/package)
+risk_assess_package <- risk_assess_pkg_lock_files(path/to/your/lockfile)
 ```
 
 Note: This process can be very time-consuming and is recommended to be performed as a batch job or within a GitHub Action.
-
 
 ## Assessing Open source R package on CRAN or bioconductor
 
@@ -134,365 +145,221 @@ To check a source code package from `CRAN` or `bioconductor`, run the following 
 risk_assess_package <- assess_pkg_r_package(package_name, package_version)
 ```
 
-
 # Metrics and Risk assessment
 
-
-``` r
-# Metadata
-
-$pkg_name
-[1] "here"
-
-$pkg_version
-[1] "1.0.1"
-
-$pkg_source_path
-  C:/Users/xxxx/AppData/Local/Temp/Rtmp4A0ht7/temp_file_8bec8fd299c/here 
-"C:/Users/xxxx/AppData/Local/Temp/Rtmp4A0ht7/temp_file_8bec8fd299c/here" 
-
-$date_time
-[1] "2025-02-19 14:25:39"
-
-$executor
-[1] ""
-
-$sysname
-[1] "Windows"
-
-$version
-[1] "build 22631"
-
-$release
-[1] "10 x64"
-
-$machine
-[1] "x86-64"
-
-$comments
-[1] " "
-
-``` 
-
-``` r
-# Documentation metric
-
-$has_bug_reports_url
-[1] 1
-
-$license
-[1] 1
-
-$has_examples
-[1] 1
-
-$has_maintainer
-[1] 1
-
-$size_codebase
-[1] 0.4680851
-
-$has_news
-[1] 1
-
-$has_source_control
-[1] 1
-
-$has_vignettes
-[1] 1
-
-$has_website
-[1] 1
-
-$news_current
-[1] 1
-
-$export_help
-[1] 1
-
-$export_calc
-[1] 0.6791787
-
-$check
-[1] 0
-
-$covr
-[1] 0.9867
-
-$license_name
-[1] "MIT + file LICENSE"
-``` 
-
-``` r
-# Dependencies
-
-$dependencies
-$dependencies$imports
-$dependencies$imports$rprojroot
-[1] "2.0.4"
-
-
-$dependencies$suggests
-$dependencies$suggests$conflicted
-[1] "1.2.0"
-
-$dependencies$suggests$covr
-[1] "3.6.4"
-
-$dependencies$suggests$fs
-[1] "1.6.3"
-
-$dependencies$suggests$knitr
-[1] "1.48"
-
-$dependencies$suggests$palmerpenguins
-[1] "0.1.1"
-
-$dependencies$suggests$plyr
-[1] "1.8.9"
-
-$dependencies$suggests$readr
-[1] "2.1.5"
-
-$dependencies$suggests$rlang
-[1] "1.1.3"
-
-$dependencies$suggests$rmarkdown
-[1] "2.28"
-
-$dependencies$suggests$testthat
-[1] "3.2.1.1"
-
-$dependencies$suggests$uuid
-[1] "1.2-1"
-
-$dependencies$suggests$withr
-[1] "3.0.1"
-
-$dep_score
-[1] 0.04742587
-``` 
-
-``` r
-# $suggested_deps
-
-$suggested_deps
-# A tibble: 3 × 4
-  source suggested_function targeted_package message                                                  
-  <chr>  <chr>                         <dbl> <chr>                                                    
-1 here   0                                 0 Please check if the targeted package should be in Imports
-2 here   f                                 0 Please check if the targeted package should be in Imports
-3 i_am   0                                 0 Please check if the targeted package should be in Imports
-``` 
-
-``` r
-# reverse dependencies
-$rev_deps
-  [1] "adepro"                  "APCalign"                "archetyper"              "ARUtools"               
-  [5] "AzureAppInsights"        "bdc"                     "BeeBDC"                  "blastula"               
-  [9] "boxr"                    "bscui"                   "bsitar"                  "cache"                  
- [13] "cape"                    "cbcTools"                "ciTools"                 "clockify"               
- [17] "CohortCharacteristics"   "CohortConstructor"       "CohortSymmetry"          "cpsvote"                
- [21] "cricketdata"             "crosstalkr"              "denguedatahub"           "DescrTab2"              
- [25] "designit"                "did"                     "diffEnrich"              "diseasystore"           
- [29] "DrugExposureDiagnostics" "DrugUtilisation"         "dtrackr"                 "dyn.log"                
- [33] "EIEntropy"               "elaborator"              "emayili"                 "EpiNow2"                
- [37] "filecacher"              "flourishcharts"          "flow"                    "folders"                
- [41] "formods"                 "froggeR"                 "fromhere"                "funspotr"               
- [45] "fusen"                   "gghdx"                   "ggseg"                   "ghclass"                
- [49] "GIMMEgVAR"               "GISSB"                   "gitignore"               "golem"                  
- [53] "graphicalMCP"            "gtfsrouter"              "Guerry"                  "heddlr"                 
- [57] "heplots"                 "hkdatasets"              "IncidencePrevalence"     "isotracer"              
- [61] "ixplorer"                "jetty"                   "justifier"               "k5"                     
- [65] "kindisperse"             "logitr"                  "logrx"                   "longsurr"               
- [69] "lterdatasampler"         "mailmerge"               "maraca"                  "marginaleffects"        
- [73] "metabolic"               "metR"                    "midfieldr"               "MiscMetabar"            
- [77] "mlr3spatiotempcv"        "morphemepiece"           "naijR"                   "naniar"                 
- [81] "nestedLogit"             "nettskjemar"             "omopgenerics"            "OmopSketch"             
- [85] "OmopViewer"              "organizr"                "PatientProfiles"         "pharmr"                 
- [89] "phdcocktail"             "PhenotypeR"              "phsmethods"              "popstudy"               
- [93] "precommit"               "projects"                "PUMP"                    "r4lineups"              
- [97] "RAINBOWR"                "rang"                    "ratlas"                  "rdfp"                   
-[101] "REDCapCAST"              "regions"                 "reticulate"              "retroharmonize"         
-[105] "ReviewR"                 "rfold"                   "rjtools"                 "rnassqs"                
-[109] "rsf"                     "rUM"                     "rworkflows"              "salesforcer"            
-[113] "SCDB"                    "schtools"                "SHAPforxgboost"          "shiny2docker"           
-[117] "smdi"                    "socialmixr"              "spanishoddata"           "Spectran"               
-[121] "srppp"                   "stRoke"                  "styler"                  "tatooheene"             
-[125] "tcplfit2"                "tfrmtbuilder"            "tfruns"                  "tibble"                 
-[129] "tidychangepoint"         "tidyprompt"              "tidyxl"                  "toxEval"                
-[133] "tsgc"                    "tugboat"                 "UKB.COVID19"             "unpivotr"               
-[137] "upstartr"                "validateIt"              "vcdExtra"                "vegawidget"             
-[141] "vembedr"                 "weed"                    "wither"                  "x3ptools"               
-[145] "xpose"                   "yum"                    
-
-$revdep_score
-[1] 0.9782352
-``` 
-
-``` r
-# Authorship
-
-
-$author
-$author$maintainer
-[1] "Kirill Müller <krlmlr+r@mailbox.org> [aut, cre] (<https://orcid.org/0000-0002-1416-3412>)"
-
-$author$funder
-[1] "No package foundation found"
-
-$author$authors
-[1] "Kirill Müller <krlmlr+r@mailbox.org> [aut, cre] (<https://orcid.org/0000-0002-1416-3412>)"
-[2] "Jennifer Bryan <jenny@rstudio.com> [ctb] (<https://orcid.org/0000-0002-6983-2759>)"       
-``` 
-
-``` r
-
-# hosting
-
-$host
-$host$github_links
-[1] "https://github.com/r-lib/here"
-
-$host$cran_links
-[1] "https://cran.r-project.org/src/contrib/here_1.0.1.tar.gz"
-
-$host$internal_links
-NULL
-
-$host$bioconductor_links
-[1] "No Bioconductor link found"
-``` 
-
-``` r
-# Github data
-
-$github_data
-$github_data$created_at
-[1] "2016-07-19T14:47:19Z"
-
-$github_data$stars
-[1] 417
-
-$github_data$forks
-[1] 43
-
-$github_data$date
-[1] "2025-02-19"
-
-$github_data$recent_commits_count
-[1] 0
-``` 
-
-``` r
-# version_info
-
-$version_info
-$version_info$available_version
-[1] "0.1"   "1.0.0" "1.0.1"
-
-$version_info$last_version
-[1] "1.0.1"
-``` 
-``` r
-# CRAN download
-
-$download
-$download$total_download
-[1] 9900000
-
-$download$last_month_download
-[1] 338000
-``` 
-``` r
-# Risk
-
-$overall_risk_score
-[1] 0.2962086
-
-$risk_profile
-[1] "Medium"
-
+| Key Metrics         | Reason                                                                            | where to find them in Metrics and Risk assessment |
+|---------------------|------------------|---------------------------------|
+| RCMD check          | series of 45 package checks of tests, package structure, documentation            | `check` element in `results` list, check_list     |
+| test coverage       | unit test coverage                                                                | `covr` element in `results` list, covr_list       |
+| risk analysis       | rules and thresholds to identify risks                                            | risk_analysis                                     |
+| traceability matrix | maps exported functions to test coverage, documentation by risk and function type | tm_list                                           |
+
+## results
+
+```         
+results
+├── pkg_name: "admiral"
+├── pkg_version: "1.0.2"
+├── pkg_source_path
+├── date_time
+├── executor
+├── sysname, version, release, machine, comments
+├── license: 1
+├── license_name: "Apache License (>= 2)"
+├── size_codebase: 0.9777
+├── has_bug_reports_url, has_examples, has_maintainer, has_news
+├── has_source_control, has_vignettes, has_website, news_current
+├── export_help: 0
+├── check: 0
+├── covr: 0
+├── dependencies
+│   ├── imports: [list of packages with versions]
+│   └── suggests: [list of packages with versions]
+├── suggested_deps: [list of 5 dependency issues]
+├── author
+│   ├── maintainer: [Ben Straub info]
+│   ├── funder: [list of organizations]
+│   └── authors: [list of contributors]
+├── host
+│   ├── github_links
+│   ├── cran_links
+│   ├── internal_links
+│   └── bioconductor_links
+├── github_data
+│   ├── created_at
+│   ├── stars, forks
+│   ├── date
+│   ├── recent_commits_count
+│   └── open_issues
+├── download
+│   ├── total_download
+│   └── last_month_download
+├── rev_deps: [list of reverse dependencies]
+├── version_info
+│   ├── all_versions: [list of version/date pairs]
+│   ├── last_version
+│   └── difference_version_months
+├── tests
+│   ├── has_testthat
+│   ├── has_snaps
+│   ├── has_testit
+│   ├── n_golden_tests
+│   └── n_test_files
+└── risk_profile: "High"
 ```
 
-# Check the RCMD check results
+[More info Here](https://probable-chainsaw-kgro2o7.pages.github.io/articles/risk.assessr_metric.html)
 
-``` r
+## covr_list
 
-risk_assess_package$check_list$res_check
+```         
+covr_list
+├── total_cov: "NA"
+└── res_cov
+    ├── name: "admiral"
+    ├── coverage
+    │   ├── filecoverage: null
+    │   └── totalcoverage: "NA"
+    └── errors: [callr traceback]
 ```
 
-## R CMD check results
+## 🔍 check_list
 
-    risk_assess_package$check_list$res_check
-    ── R CMD check results ─────────────────────────────────────────────────────────── here 1.0.1 ────
-    Duration: 46.9s
-
-    0 errors ✔ | 0 warnings ✔ | 0 notes ✔
-    > 
-    > # to check the RCMD check score
-    > risk_assess_package$check_list$check_score
-    [1] 1
-
-# Check the test coverage results
-
-``` r
-
-risk_assess_package$covr_list
+```         
+check_list
+├── res_check
+│   ├── stdout, stderr, status, duration
+│   ├── errors, warnings, notes
+│   ├── checkdir
+│   └── description (DESCRIPTION file content)
+└── check_score: 0
 ```
 
-# Test coverage results
+## risk_analysis
 
-    risk_assess_package$covr_list
-    $total_cov
-    [1] 0.9867
-
-    $res_cov
-    $res_cov$name
-    [1] "here-1.0.1"
-
-    $res_cov$coverage
-    $res_cov$coverage$filecoverage
-         R/aaa.R  R/dr_here.R     R/here.R     R/i_am.R R/set_here.R      R/zzz.R 
-          100.00       100.00       100.00        95.83       100.00       100.00 
-
-    $res_cov$coverage$totalcoverage
-    [1] 98.67
-
-
-    $res_cov$errors
-    [1] NA
-
-    $res_cov$notes
-    [1] NA
-
-# Check the traceability matrix
-
-``` r
-risk_assess_package$tm
+```         
+risk_analysis
+├── dependencies_count: "low"
+├── later_version: "high"
+├── code_coverage: "high"
+├── last_month_download: "high"
+├── license: "low"
+├── reverse_dependencies_count: "medium"
+├── documentation_score: "high"
+└── cmd_check: "high"
 ```
 
-# Traceability Matrix
+[More info Here](https://probable-chainsaw-kgro2o7.pages.github.io/articles/define_custom_risk_rules.html)
 
-    # A tibble: 4 × 5
-      exported_function function_type code_script  documentation description                   coverage_percent
-      <chr>             <chr>         <chr>        <chr>         <chr>                                    <dbl>
-    1 dr_here           regular       R/dr_here.R  dr_here.Rd    "dr_here() shows a message t…            100  
-    2 here              regular       R/here.R     here.Rd       "here() uses a reasonable he…            100  
-    3 i_am              regular       R/i_am.R     i_am.Rd       "Add a call to here::i_am(\"…             95.8
-    4 set_here          regular       R/set_here.R set_here.Rd   "html<a href='https://www.ti…            100
+# Advanced features
 
+## Traceability Matrix
+
+```         
+tm_list
+├── pkg_name: "admiral"
+└── coverage
+    ├── filecoverage: 0
+    └── totalcoverage: 0
+```
+
+[More info Here](https://probable-chainsaw-kgro2o7.pages.github.io/articles/Traceability_matrix.html)
+
+### suggested_deps
+
+```         
+suggested_deps
+├── [1]
+│   ├── source: "create_period_dataset"
+│   ├── suggested_function: "matches"
+│   ├── targeted_package: "testthat"
+│   └── message: "Please check if the targeted package should be in Imports"
+├── [2]
+│   ├── source: "create_single_dose_dataset"
+│   ├── suggested_function: "it"
+│   ├── targeted_package: "testthat"
+│   └── message: "Please check if the targeted package should be in Imports"
+├── [3]
+│   ├── source: "derive_vars_merged"
+│   ├── suggested_function: "it"
+│   ├── targeted_package: "testthat"
+│   └── message: "Please check if the targeted package should be in Imports"
+├── [4]
+│   ├── source: "list_tte_source_objects"
+│   ├── suggested_function: "br"
+│   ├── targeted_package: "htmltools"
+│   └── message: "Please check if the targeted package should be in Imports"
+├── [5]
+│   ├── source: "use_ad_template"
+│   ├── suggested_function: "it"
+│   ├── targeted_package: "testthat"
+│   └── message: "Please check if the targeted package should be in Imports"
+```
+
+# Generate HTML risk report
+
+[More info Here](https://probable-chainsaw-kgro2o7.pages.github.io/articles/generate_html_report.html)
 
 # Current/Future directions
 
-- Github action to call risk.assessr data (from R package/renv managed project)
-- More fine grained features for test coverage report
-- Produce database of risk assessment for Sanofi packages
+-   Produce database of risk assessment for Sanofi packages
+-   Github actions
 
+# Publication/presentation
+
+# PHUSE 2025 Presentations -- Sanofi
+
+1.  **Conference:** Connect 2025\
+    **Location:** Orlando, US\
+    **Session ID:** OS17\
+    **Title:** *Risk.assessr: A Tool for Assessing and Mitigating Risks with Open-Source R Packages in Clinical Trials*\
+    **Presenters:** Andre Couturier, Edward Gillian\
+    **Authors:** Edward Gillian, Hugo Bottois, Paulin Charliquart, Andre Couturier\
+    **Company:** Sanofi\
+    **Materials**
+    -   [Presentation (PDF)](https://phuse.s3.eu-central-1.amazonaws.com/Archive/2025/Connect/US/Orlando/PRE_OS17.pdf)\
+    -   [Paper (PDF)](https://phuse.s3.eu-central-1.amazonaws.com/Archive/2025/Connect/US/Orlando/PAP_OS17.pdf)
+2.  **Conference:** PHUSE SDE 2025\
+    **Location:** Beijing, China\
+    **Title:** *CI/CD in R Package Development with Integrated Risk Assessment*\
+    **Presenter:** Neo Yang\
+    **Authors:** Edward Gillian, Hugo Bottois, Paulin Charliquart, Andre Couturier\
+    **Company:** Sanofi\
+    **Materials**
+    -   [Presentation (PDF)](https://phuse.s3.eu-central-1.amazonaws.com/Archive/2025/SDE/APAC/Beijing/PRE_Beijing07.pdf)
+3.  **Conference:** EU Connect 2025\
+    **Location:** Hamburg, Germany\
+    **Session ID:** CT10\
+    **Title:** *Risk.assessr: Extracting OOP Function Details*\
+    **Presenter:** Edward Gillian\
+    **Authors:** Edward Gillian, Hugo Bottois, Paulin Charliquart, Andre Couturier\
+    **Company:** Sanofi\
+    **Materials / Status:**
+    -   *Ongoing*
+4.  **Conference:** R/Pharma 2025 APAC\
+    **Location:** Online\
+    **Session ID:** Ongoing\
+    **Title:** *risk.assessr: extending its use in the package validation process*\
+    **Presenter:** Hugo Bottois\
+    **Authors:** Edward Gillian, Hugo Bottois, Paulin Charliquart, Andre Couturier\
+    **Company:** Sanofi\
+    **Materials / Status:**
+    -   *Ongoing*
+
+# Citation
+
+Gillian E, Bottois H, Charliquart P, Couturier A (2025). risk.assessr: Assessing Package Risk Metrics. R package version 2.0.0, <https://probable-chainsaw-kgro2o7.pages.github.io/>.
+
+```         
+@Manual{,
+  title = {risk.assessr: Assessing Package Risk Metrics},
+  author = {Edward Gillian and Hugo Bottois and Paulin Charliquart and Andre Couturier},
+  year = {2025},
+  note = {R package version 2.0.0},
+  url = {https://probable-chainsaw-kgro2o7.pages.github.io/},
+}
+```
 
 # Acknowledgements
 
-The project is inspired by the
-[`riskmetric`](https://github.com/pharmaR/riskmetric) package and the
-[`mpn.scorecard`](https://github.com/metrumresearchgroup/mpn.scorecard)
-package and draws on some of their ideas and functions.
+The project is inspired by the [`riskmetric`](https://github.com/pharmaR/riskmetric) package and the [`mpn.scorecard`](https://github.com/metrumresearchgroup/mpn.scorecard) package and draws on some of their ideas and functions.

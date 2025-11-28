@@ -41,14 +41,14 @@ test_that("test on package with vignette folder", {
 })
 
 test_that("test on package without vignette folder", {
-
+  
   tar_file <- system.file("test-data/check_vignettes", "no_vignette.tar.gz", package = "risk.assessr")
   expect_false(contains_vignette_folder(tar_file))
   expect_silent(contains_vignette_folder(tar_file))
 })
 
 test_that("test on package with vignette folder but no .rmd file", {
-
+  
   tar_file <- system.file("test-data/check_vignettes", "just_vignette_folder.tar.gz", package = "risk.assessr")
   expect_false(contains_vignette_folder(tar_file))
   expect_silent(contains_vignette_folder(tar_file))

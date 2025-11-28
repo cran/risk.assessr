@@ -9,3 +9,10 @@ test.package.0007,test.package.0007_0.1.0.tar.gz,8 notes - DESCRIPTION elements
 test.package.0008,test.package.0008_0.1.0.tar.gz,DESCRIPTION file with "Config/build/clean-inst-doc: FALSE"
 test.package.0009,test.package.0009_0.1.0.tar.gz,Package with S3 functions from Suggested package
 test.package.0010,test.package.0010_0.1.0.tar.gz,Package with S4 functions from Suggested package
+test.package.0011,test.package.0011_0.1.0.tar.gz,Package with R6 and other functions from Suggested package
+test.package.0012,test.package.0012_0.1.0.tar.gz,Package with nonstandard NAMESPACE
+test.package.0013,test.package.0013_0.1.0.tar.gz,Package with undocumented functions and datasets
+no_vignette.tar.gz , no_vignette.tar.gz, Package with no vignette
+just_vignette_folder.tar.gz , just_vignette_folder.tar.gz, Package with "vignette" folder, but no vignette
+got_vignette.teeeeeeear , got_vignette.teeeeeeear.tar.gz, Package with wrong and non tar extension
+got_vignette.tar.gz , got_vignette.tar.gz, Package with vignette folder and vignette inside

@@ -11,5 +11,7 @@ library(withr)
 library(dplyr)
 library(jsonlite)
 library(fs)
+library(curl)
+library(xml2)
 
 test_check("risk.assessr")

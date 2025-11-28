@@ -4,10 +4,14 @@
 \alias{generate_trace_matrix_section}
 \title{Generate Trace Matrix Section}
 \usage{
-generate_trace_matrix_section(assessment_results)
+generate_trace_matrix_section(total_coverage, file_coverage, tm_df)
 }
 \arguments{
-\item{assessment_results}{- input data}
+\item{total_coverage}{- total coverage for the package}
+
+\item{file_coverage}{- file coverage for the package}
+
+\item{tm_df}{- input data}
 }
 \description{
 Generates the Trace Matrix section for the HTML report.

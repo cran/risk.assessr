@@ -10,7 +10,7 @@ install_package_local(pkg_source_path)
 \item{pkg_source_path}{- source path for install local}
 }
 \value{
-logical. Returns `TRUE` if the package was successfully installed, `FALSE` otherwise.
+logical - package_installed
 }
 \description{
 Install package locally

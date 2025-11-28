@@ -3,6 +3,7 @@
 #' @description get descriptions of exported functions 
 #' 
 #' @param pkg_name - name of the package
+#'
 #' @keywords internal
 get_func_descriptions <- function(pkg_name){
   db <- tools::Rd_db(pkg_name)

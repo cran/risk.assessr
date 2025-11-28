@@ -24,6 +24,18 @@ toy_assessment_results <- list(
     export_calc = 0.731,
     check = 1,
     covr = 1,
+    github_data = list(
+      created_at = "2016-07-19T14:47:19Z",
+      stars = 422,
+      forks = 45,
+      date = "2025-07-02",
+      recent_commits_count = 0,
+      open_issues = 29
+    ),
+    download = list(
+      total_download = 11369237,
+      last_month_download = 299354
+    ),
     dependencies = list(
       imports = list(checkmate = "2.1.0"),
       suggests = list(testthat = "3.2.1.1")
@@ -32,27 +44,90 @@ toy_assessment_results <- list(
     rev_deps = logical(0),
     revdep_score = 0.0966,
     overall_risk_score = 0.577,
-    risk_profile = "High"
+    risk_profile = "High",
+    license_name = "MIT + file LICENSE"
   ),
   covr_list = list(
     total_cov = 1,
     res_cov = list(
       name = "test.package.0001",
       coverage = list(
-        filecoverage = structure(100, .Dim = c(1L), .Dimnames = list("R/myscript.R")),
-        totalcoverage = 100
+        filecoverage = structure(50, .Dim = c(1L), .Dimnames = list("R/myscript.R")),
+        totalcoverage = 50
       ),
       errors = NA,
       notes = NA
     )
   ),
-  tm = dplyr::tibble(
-    exported_function = "myfunction",
-    function_type = "regular",
-    code_script = "R/myscript.R",
-    documentation = "myfunction.Rd",
-    description = "Adds 1 to x",
-    coverage_percent = 100
+  tm_list = list(
+    tm = dplyr::tibble(
+      exported_function = "myfunction",
+      function_type = "regular",
+      code_script = "R/myscript.R",
+      documentation = "myfunction.Rd",
+      description = "Adds 1 to x",
+      coverage_percent = 50
+    ),
+    coverage = list(
+      high_risk = dplyr::tibble(
+        exported_function = "myfunction",
+        class = NA,
+        function_type = "regular",
+        function_body = "{\n    check_string(encoding)\n    stri_conv(string, encoding, \"UTF-8\")\n}",
+        where = "stringr",
+        code_script = "R/myscript.R",
+        documentation = "myfunction.Rd",
+        description = "Adds 1 to x",
+        coverage_percent = 50
+      ),
+      medium_risk = list(
+        pkg_name = "test.package.0001",
+        coverage = list(
+          filecoverage = 0,
+          totalcoverage =  0
+        ),
+        errors = NA,
+        notes  = NA
+      ),
+      low_risk = list(
+        pkg_name = "test.package.0001",
+        coverage = list(
+          filecoverage = 0,
+          totalcoverage =  0
+        ),
+        errors = NA,
+        notes  = NA
+      )
+    ),
+    function_type = list(
+      defunct = dplyr::tibble(
+        pkg_name = "test.package.0001",
+        coverage = list(
+          filecoverage = 0,
+          totalcoverage =  0
+        ),
+        errors = NA,
+        notes  = NA
+      ),
+      imported = dplyr::tibble(
+        pkg_name = "test.package.0001",
+        coverage = list(
+          filecoverage = 0,
+          totalcoverage =  0
+        ),
+        errors = NA,
+        notes  = NA
+      ),
+      rexported = dplyr::tibble(
+        pkg_name = "test.package.0001",
+        coverage = list(
+          filecoverage = 0,
+          totalcoverage =  0
+        ),
+        errors = NA,
+        notes  = NA
+      )
+    )
   ),
   check_list = list(
     res_check = list(
@@ -108,13 +183,55 @@ toy_assessment_results <- list(
   )
 )
 
+test_that("handle_null returns 'N/A' for NULL", {
+  expect_equal(handle_null(NULL), "N/A")
+})
+
+test_that("handle_null returns original value for non-NULL", {
+  expect_equal(handle_null(123), 123)
+  expect_equal(handle_null("text"), "text")
+})
+
+test_that("convert_number_to_abbreviation handles millions", {
+  expect_equal(convert_number_to_abbreviation(1500000), "1.5M")
+  expect_equal(convert_number_to_abbreviation(-2500000), "-2.5M")
+})
+
+test_that("convert_number_to_abbreviation handles thousands", {
+  expect_equal(convert_number_to_abbreviation(1200), "1.2K")
+  expect_equal(convert_number_to_abbreviation(-9999), "-10K")
+})
+
+test_that("convert_number_to_abbreviation handles small numbers", {
+  expect_equal(convert_number_to_abbreviation(999), "999")
+  expect_equal(convert_number_to_abbreviation(0), "0")
+})
+
+test_that("convert_number_to_abbreviation handles NA and non-numeric", {
+  expect_true(is.na(convert_number_to_abbreviation(NA)))
+  expect_true(is.na(convert_number_to_abbreviation("text")))
+})
+
 test_that("generate_rcmd_check_rmd_section works correctly", {
   result <- generate_rcmd_check_section(toy_assessment_results)
   expect_equal(result$Message, "RCMD Check score")
-  expect_equal(result$Score, 1)
+  expect_equal(result$Score, "100%")
   expect_equal(result$Errors, "No errors")
   expect_equal(result$Warnings, "No warnings")
   expect_equal(result$Notes, "No notes")
+})
+
+test_that("safe_value returns 'N/A' for NULL", {
+  expect_equal(safe_value(NULL), "N/A")
+})
+
+test_that("safe_value abbreviates numeric values", {
+  expect_equal(safe_value(1000), "1K")
+  expect_equal(safe_value(1000000), "1M")
+})
+
+test_that("safe_value returns character for small numbers", {
+  expect_equal(safe_value(42), "42")
 })
 
 # Define the toy assessment_results object
@@ -122,8 +239,11 @@ toy_assessment_results_1_1 <- list(
   results = list(
     pkg_name = "test.package.0001",
     pkg_version = "1.0.0",
-    overall_risk_score = 0.75,
-    risk_profile = "Medium"
+    license_name = "MIT + file LICENSE",
+    cran_link = "https://cran.r-project.org/src/contrib/stringr_1.5.1.tar.gz",
+    github_link = "https://github.com/tidyverse/stringr",
+    bioc_link = NULL,
+    internal_link = NULL
   )
 )
 
@@ -135,10 +255,16 @@ test_that("generate_risk_summary works correctly", {
   expect_equal(result$Value[1], "test.package.0001")
   expect_equal(result$Metric[2], "Version")
   expect_equal(result$Value[2], "1.0.0")
-  expect_equal(result$Metric[3], "Overall Risk Score")
-  expect_equal(result$Value[3], '0.75')
-  expect_equal(result$Metric[4], "Risk Profile")
-  expect_equal(result$Value[4], "Medium")
+  expect_equal(result$Metric[3], "License")
+  expect_equal(result$Value[3], "MIT + file LICENSE")
+  expect_equal(result$Metric[4], "CRAN link")
+  expect_equal(result$Value[4], "No CRAN link found")
+  expect_equal(result$Metric[5], "GitHub repository")
+  expect_equal(result$Value[5], "No GitHub link found")
+  expect_equal(result$Metric[6], "Bioconductor Link")
+  expect_equal(result$Value[6], "No Bioconductor link found")
+  expect_equal(result$Metric[7], "Internal Repository")
+  expect_equal(result$Value[7], "No Internal link found")
 })
 
 # Define the toy assessment_results object
@@ -183,7 +309,7 @@ test_that("generate_risk_details works correctly", {
 test_that("generate_coverage_section works correctly", {
   result <- generate_coverage_section(toy_assessment_results)
   expect_equal(result$Function[1], "R/myscript.R")
-  expect_equal(result$Coverage[1], 100)
+  expect_equal(result$Coverage[1], 50)
   expect_equal(result$Errors, "No test coverage errors")
   expect_equal(result$Notes, "No test coverage notes")
 })
@@ -220,6 +346,26 @@ test_that("generate_doc_metrics_section works correctly", {
   expect_equal(result$Value[1], "Not Included")
 })
 
+test_that("generate_pop_metrics_section works correctly", {
+  result <- generate_pop_metrics_section(toy_assessment_results)
+  expect_equal(result$Metric[1], "Date created")
+  expect_equal(result$Value[1], "2016-07-19T14:47:19Z")
+  expect_equal(result$Metric[2], "Stars")
+  expect_equal(result$Value[2], "422")
+  expect_equal(result$Metric[3], "Forks")
+  expect_equal(result$Value[3], "45")
+  expect_equal(result$Metric[4], "Data Extract Date")
+  expect_equal(result$Value[4], "2025-07-02")
+  expect_equal(result$Metric[5], "Recent Commits")
+  expect_equal(result$Value[5], "0")
+  expect_equal(result$Metric[6], "Open Issues")
+  expect_equal(result$Value[6], "29")
+  expect_equal(result$Metric[7], "Downloads Total")
+  expect_equal(result$Value[7], "11.4M")
+  expect_equal(result$Metric[8], "Downloads Last Month")
+  expect_equal(result$Value[8], "299.4K")
+})
+
 # Test for generate_deps_section function
 # Define the expected output
 expected_deps_df <- data.frame(
@@ -229,39 +375,35 @@ expected_deps_df <- data.frame(
   stringsAsFactors = FALSE
 )
 
-expected_dep_score <- 0.0002
+expected_import_count <- 1
+expected_suggest_count <- 1
 
 # Test the generate_deps_section function
 test_that("generate_deps_section works correctly", {
   result <- generate_deps_section(toy_assessment_results)
   
   expect_equal(result$deps_df, expected_deps_df)
-  expect_equal(result$dep_score, expected_dep_score)
+  expect_equal(result$import_count, expected_import_count)
+  expect_equal(result$suggest_count, expected_suggest_count)
 })
 
 # Define the toy assessment_results object
 toy_assessment_results_2 <- list(
   results = list(
-    rev_deps = c("abcrf", "abjutils", "accessrmd", "accucor", "ace2fastq"),
-    revdep_score = 0.0012
+    rev_deps = c("abcrf", "abjutils", "accessrmd", "accucor", "ace2fastq")
   )
 )
 
 # Define the expected output
-expected_rev_deps_df <- data.frame(
-  Reverse_dependencies = c("abcrf", "abjutils", "accessrmd", "accucor", "ace2fastq"),
-  stringsAsFactors = FALSE
-)
+expected_rev_deps <- c("abcrf", "abjutils", "accessrmd", "accucor", "ace2fastq")
 
-expected_rev_deps_score <- 0.0012
 expected_rev_deps_no <- 5
 
 # Test the generate_rev_deps_section function
 test_that("generate_rev_deps_section works correctly", {
   result <- generate_rev_deps_section(toy_assessment_results_2)
   
-  expect_equal(result$rev_deps_df, expected_rev_deps_df)
-  expect_equal(result$rev_deps_summary$rev_deps_score, expected_rev_deps_score)
+  expect_equal(result$rev_deps_df$Reverse_dependencies, expected_rev_deps)
   expect_equal(result$rev_deps_summary$rev_deps_no, expected_rev_deps_no)
 })
 
@@ -278,6 +420,9 @@ test_that("generate_trace_matrix_section works correctly with empty trace matrix
     )
   )
   
+  file_coverage <- assessment_results$covr_list$res_cov$coverage$filecoverage
+  total_coverage <- assessment_results$covr_list$res_cov$coverage$totalcoverage
+  
   # Expected output
   expected_output <- data.frame(
     Exported_function = " ",
@@ -290,28 +435,11 @@ test_that("generate_trace_matrix_section works correctly with empty trace matrix
   )
   
   # Run the function
-  result <- generate_trace_matrix_section(assessment_results)
+  result <- 
+    generate_trace_matrix_section(total_coverage, file_coverage, assessment_results)
   
   # Check if the result matches the expected output
   expect_equal(result, expected_output)
-})
-
-test_that("generate_html_report works correctly when directory exists", {
-  # Mock the fs::dir_exists function to return TRUE
-  mockery::stub(generate_html_report, "fs::dir_exists", TRUE)
-  
-  # Mock the rmarkdown::render function to do nothing
-  mockery::stub(generate_html_report, "rmarkdown::render", NULL)
-  
-  # Define the output directory
-  output_dir <- "mock_output_dir"
-  
-  # Call the function
-  output_file <- generate_html_report(toy_assessment_results, output_dir)
-  
-  # Check that the output file path is correct
-  expected_output_file <- fs::path(output_dir, "risk_report_test.package.0001_0.1.0.html")
-  expect_equal(output_file, expected_output_file)
 })
 
 test_that("generate_html_report returns message when directory does not exist", {
@@ -328,43 +456,26 @@ test_that("generate_html_report returns message when directory does not exist", 
   expect_null(output_file)
 })
 
-test_that("generate_html_report works correctly", {
-  mock_render <- mockery::mock()
-  mockery::stub(generate_html_report, "rmarkdown::render", mock_render)
+
+test_that("generate_html_report creates an HTML report", {
+  # Create a temporary directory for output
+  tmp_dir <- withr::local_tempdir()
   
-  # Mock the fs::dir_exists function to return TRUE
-  mockery::stub(generate_html_report, "fs::dir_exists", TRUE)
+  # Ensure cleanup of all files in tmp_dir
+  withr::defer(unlink(tmp_dir, recursive = TRUE), envir = parent.frame())
   
-  # Define the output directory
-  output_dir <- "mock_output_dir"
+  # Force rendering in CRAN/win-builder
+  withr::local_envvar(NOT_CRAN = "true")
   
-  result <- generate_html_report(toy_assessment_results, output_dir)
+  # Run the function
+  generate_html_report(toy_assessment_results, tmp_dir)
   
-  mockery::expect_called(mock_render, 1)
+  # Find any .html file in tmp_dir
+  html_files <- list.files(tmp_dir, pattern = "\\.html$", full.names = TRUE)
+  
+  # Check that at least one HTML file exists and is non-empty
+  expect_true(length(html_files) > 0, info = "No HTML report was generated")
+  expect_true(file.info(html_files[1])$size > 0, info = "HTML report is empty")
+  
 })
 
-test_that("generate_html_report works correctly on different OS", {
-  mock_render <- mockery::mock()
-  mockery::stub(generate_html_report, "rmarkdown::render", mock_render)
-  
-  # Mock the fs::dir_exists function to return TRUE
-  mockery::stub(generate_html_report, "fs::dir_exists", TRUE)
-  
-  # Define the output directory
-  output_dir <- "mock_output_dir"
-  
-  # Mocking the OS check for Windows
-  mockery::stub(generate_html_report, "Sys.info", list(sysname = "Windows"))
-  result_windows <- generate_html_report(toy_assessment_results, output_dir)
-  mockery::expect_called(mock_render, 1)
-  
-  # Mocking the OS check for Linux
-  mockery::stub(generate_html_report, "Sys.info", list(sysname = "Linux"))
-  result_linux <- generate_html_report(toy_assessment_results, output_dir)
-  mockery::expect_called(mock_render, 2)
-  
-  # Mocking the OS check for macOS (Darwin)
-  mockery::stub(generate_html_report, "Sys.info", list(sysname = "Darwin"))
-  result_mac <- generate_html_report(toy_assessment_results, output_dir)
-  mockery::expect_called(mock_render, 3)
-})

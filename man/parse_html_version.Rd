@@ -35,5 +35,9 @@ This function extracts version information from the HTML content of a CRAN archi
 \dontrun{
 parse_html_version(html_content, "GenomicRanges")
 }
+\dontrun{
+html_content <- parse_package_info("dplyr")
+parse_html_version(html_content, "dplyr")
+}
 }
 \keyword{internal}

@@ -33,4 +33,9 @@ The function extracts hosting links by:
 
 If no links are found in the `DESCRIPTION` file, returns `NULL`
 }
-\keyword{internal}
+\examples{
+\dontrun{
+result <- get_host_package(pkg_name, pkg_version, pkg_source_path)
+print(result)
+}
+}

@@ -1,15 +1,53 @@
-# risk.assessr 2.0.1
+# risk.assessr 3.0.0
 
-## CRAN Note cleanup
+## New Features
 
-- added `withr::defer` and `unlink` to tests with these packages:
+- **fine-grained traceability matrices**:
 
-  - `test.package.0001`
-  - `test.package.0005`
-  - `test.package.0006`
-  - `test.package.0009`
-  - `test.package.0010`
+  - new traceability matrices (tms) in `generate_html_report`:
+    - tms showing functions by test coverage e.g. `High Risk`, `Medium Risk`, `Low Risk`
+    - tms showing function type e.g. `Defunct`, `Imported`, `Re-exported`, `Experimental`
+    - Test coverage made optional
+    
 
+- **data retrieval from different sources**:
+
+  - more extensive data retrieval from `CRAN`, `Bioconductor` and `GitHub` including:
+  
+    - retrieval of the URLs for packages
+    - available package versions
+    - popularity metrics e.g. monthly and cumulative CRAN/Bioconductor downloads and git commits
+    - number of citation data from PubMed e.g. article counts by year
+  
+
+- **define your own risk rules** 
+
+  - Add risk analysis that identify risks (Low, Medium, High) based on risk.assessr metric values and thresholds
+  - create your own rules or use the default rules to suit your R package validation requirements
+  
+- **test configuration checks**
+
+  - identify testing framework/s such as testthat and testit
+  - count number of tests and golden test files  
+  
+- **dependency tree**
+
+  - Create and display data about your package and its dependencies including package versions
+   
+- **generate report path**
+
+  - `generate_html_report` will create a default report path if the user does not specify one
+ 
+- **retrieve readme badge**
+  - `list_badges` will fetch the list of badge in the readme and return key-value
+
+- **test cleanup**
+  - tests that use `tar` files located in `inst/test-data` have improved clean up using `withr::defer` and `unlink` 
+  - change `generate_html_report` and `test-generate_html_report` to make them CRAN compliant
+  
+- **vignette build**
+  - vignettes that access `CRAN` set to `eval=FALSE` to aid in detritus cleanup
+  
 # risk.assessr 2.0.0
 
 ## New Features

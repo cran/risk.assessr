@@ -2,12 +2,12 @@
 #'
 #' @param pkg_source_path - source path for install local
 #'
+#' @return logical - package_installed 
 #' @examples
 #' \dontrun{
 #' results <- install_package_local("pkg_source_path")
 #' print(results)
 #' }
-#' @return logical. Returns `TRUE` if the package was successfully installed, `FALSE` otherwise.
 #' @export
 install_package_local <- function(pkg_source_path) {
   
@@ -26,6 +26,7 @@ install_package_local <- function(pkg_source_path) {
       {
         remotes::install_local(
           pkg_source_path,
+          dependencies = TRUE,
           upgrade = "never",
           force = TRUE,
           quiet = TRUE,

@@ -8,22 +8,14 @@
 #' \dontrun{
 #' risk_assess_package <- risk_assess_pkg()
 #' 
-#' OR
-#' 
 #' risk_assess_package <- risk_assess_pkg(path/to/package.tar.gz)
 #' }
 #' @export
-#'
 risk_assess_pkg <-function(path = NULL) {
-  
-  old_options <- options()
-  old_wd <- getwd()
-  
-  # Ensure cleanup on exit
-  on.exit({
-    options(old_options)
-    setwd(old_wd)
-  }, add = TRUE)
+
+  # save and set user's current working directory
+  oldwd <- getwd()  
+  on.exit(setwd(oldwd))
   
   # get user chosen file
   pkg_source_path <- if (is.null(path)) file.choose() else path
@@ -40,7 +32,7 @@ risk_assess_pkg <-function(path = NULL) {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
-  
+ 
   # Set up the package using the temporary file
   install_list <- set_up_pkg(modified_tar_file)
   

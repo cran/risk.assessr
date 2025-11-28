@@ -15,6 +15,11 @@ test_that("parse deps for tar file works correctly", {
   pkg_source_path <- install_list$pkg_source_path
   rcmdcheck_args <- install_list$rcmdcheck_args
   
+  # Defer cleanup: remove test package from temp dirs
+  withr::defer({
+    unlink(pkg_source_path, recursive = TRUE, force = TRUE)
+  })
+  
   # install package locally to ensure test works
   package_installed <- install_package_local(pkg_source_path)
   package_installed <- TRUE
@@ -81,14 +86,18 @@ test_that("parse deps for tar file works correctly", {
   }
 })
 
-
-test_that("parse_dcf_dependencies extracts dependencies formated inline", {
+test_that("parse_dcf_dependencies extracts dependencies when CRAN is available", {
+  # Check CRAN availability
+  cran_status <- capture_cran_warning("http://cran.us.r-project.org", "src/contrib/Meta/archive.rds")
   
-  # Create a temporary directory
+  skip_if(
+    !is.null(cran_status$message),
+    message = paste("Skipping test because CRAN is not available:", cran_status$message)
+  )
+  
   temp_dir <- tempdir()
   desc_path <- file.path(temp_dir, "DESCRIPTION")
   
-  # Write a sample DESCRIPTION file in the temp directory
   writeLines(c(
     "Package: testpackage",
     "Title: A Sample Package",
@@ -107,7 +116,39 @@ test_that("parse_dcf_dependencies extracts dependencies formated inline", {
     stringsAsFactors = FALSE
   )
   
-  # Test if the output matches the expected result
+  expect_equal(deps, expected_deps)
+})
+
+test_that("parse_dcf_dependencies extracts dependencies when CRAN is not available", {
+  # Check CRAN availability
+  cran_status <- capture_cran_warning("http://cran.us.r-project.org", "src/contrib/Meta/archive.rds")
+  
+  skip_if(
+    is.null(cran_status$message),
+    message = "Skipping test because CRAN is available"
+  )
+  
+  temp_dir <- tempdir()
+  desc_path <- file.path(temp_dir, "DESCRIPTION")
+  
+  writeLines(c(
+    "Package: testpackage",
+    "Title: A Sample Package",
+    "Version: 0.1.0",
+    "Depends: R (>= 3.5.0)",
+    "Imports: dplyr, tidyr, ggplot2",
+    "Suggests: testthat",
+    "License: MIT"
+  ), desc_path)
+  
+  deps <- parse_dcf_dependencies(temp_dir)
+  
+  expected_deps <- data.frame(
+    type = c("Depends", "Imports", "Imports", "Imports", "Suggests"),
+    package = c("R", "dplyr", "tidyr", "ggplot2", "testthat"),
+    stringsAsFactors = FALSE
+  )
+  
   expect_equal(deps, expected_deps)
 })
 

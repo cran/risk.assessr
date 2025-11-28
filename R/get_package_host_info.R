@@ -1,96 +1,186 @@
+#' Convert input to ISO 8601 date (YYYY-MM-DD)
+#'
+#' @description
+#' Formats inputs as ISO 8601 calendar dates (`"YYYY-MM-DD"`).
+#'
+#' @param x A vector coercible to `Date` (e.g., character, `Date`, or `POSIXct`).
+#'   If `NULL`, the function returns `NULL`.
+#'
+#' @return
+#' A character vector the same length as `x` (or `NULL` if `x` is `NULL`)
+#' with dates formatted as `"YYYY-MM-DD"`. Unparseable elements or `NA`s
+#' become `NA_character_`.
+#'
+#' @details
+#' Coercion uses [base::as.Date()], so time-of-day and timezone information are
+#' dropped. For `POSIXct` inputs, the date is computed by `as.Date.POSIXct`
+#' (which uses `tz = "UTC"` by default). Be aware that ambiguous character
+#' dates (e.g., `"01/02/2024"`) depend on your R locale/format unless you
+#' specify a format before calling this function.
+#'
+#' @examples
+#' as_iso_date(Sys.Date())
+#' as_iso_date(NULL)              
+#' as_iso_date("not-a-date")
+#'
+#' @export
+as_iso_date <- function(x) {
+  
+  if (is.null(x)) return(NULL)
+  
+  tryCatch({
+    d <- as.Date(x)
+    format(d, "%Y-%m-%d")
+  }, error = function(e) {
+    NULL
+  })
+}
+
 #' Get Internal Package URL
 #'
-#' This function retrieves the URL of an internal package on your internal Mirror, its latest version, 
+#' This function retrieves the URL of an internal package on Mirror, its latest version, 
 #' and a list of all available versions.
 #'
 #' @param package_name A character string specifying the name of the package.
 #' @param version An optional character string specifying the version of the package.
 #' Defaults to `NULL`, in which case the latest version will be used.
-#' @param base_url a character string of internal package manager link 
-#' @param internal_path a character string of internal package mirror link
+#' @param base_url A character string specifying the base URL of the internal package manager.
 #' 
 #' @return A list containing:
 #'   - `url`: A character string of the package URL (or `NULL` if not found).
-#'   - `last_version`: A character string of the latest version of the package.
-#'   - `all_versions`: A character vector of all available package versions.
+#'   - `last_version`: A list with `version` and `date` of the latest version (or `NULL`).
+#'   - `version`: The version used to generate the URL (or `NULL`).
+#'   - `all_versions`: A list of all available versions, each as a list with `version` and `date`.
 #'
 #' @examples
 #' \dontrun{
-#'
-#' # Retrieve a specific version URL of a package
 #' result <- get_internal_package_url("internalpackage", version = "1.0.1")
-#' print(result) 
-#'}
+#' print(result)
+#' }
+#'
 #' @importFrom curl curl_fetch_memory
 #' @importFrom jsonlite fromJSON
 #' @export
 get_internal_package_url <- function(package_name, version = NULL,
-                                     base_url = "http://cran.us.r-project.org",
-                                     internal_path = "/src/contrib/") {
+                                     base_url = NULL) {
   
-  internal_base <- paste0(base_url, "/__api__/repos/6/packages/")
-  package_url <- paste0(internal_base, package_name)
-  
-  # Perform the GET request
-  response <- tryCatch({
-    curl::curl_fetch_memory(package_url)
-  }, error = function(e) {
-    return(NULL)
-  })
-  
-  # Check if the response is valid
-  if (is.null(response) || response$status_code == 404) {
-    return(list(url = NULL, last_version = NULL, all_versions = list()))
+  if (is.null(base_url)) {
+    repos <- getOption("repos")
+    
+    if (is.null(repos) || !("INTERNAL_RSPM" %in% names(repos))) {
+        message("NO INTERNAL_RSPM FOUND")
+        return(list(url = NULL, last_version = NULL, all_versions = list(), repo_id = NULL, repo_name = NULL))
+    }
+    base_url <- repos["INTERNAL_RSPM"]
   }
   
-  # Parse response as JSON
-  data <- tryCatch({
-    json_content <- rawToChar(response$content)
-    fromJSON(json_content)  
-  }, error = function(e) {
-    message("Failed to parse JSON response:", conditionMessage(e), "\n")
-    return(NULL)
-  })
-  
-  if (is.null(data)) {
-    return(list(url = NULL, last_version = NULL, all_versions = list()))
+  # Function to fetch JSON data from a URL
+  fetch_json <- function(url) {
+    response <- tryCatch(curl::curl_fetch_memory(url), error = function(e) NULL)
+    if (is.null(response) || response$status_code != 200) return(NULL)
+    tryCatch({
+      json_content <- rawToChar(response$content)
+      jsonlite::fromJSON(json_content)
+    }, error = function(e) {
+      message("Failed to parse JSON:", conditionMessage(e))
+      NULL
+    })
   }
   
-  last_version <- data$version
-  all_versions <- if (!is.null(last_version)) list(last_version) else list()
+  # Fetch the list of repositories
+  repos_url <- paste0(base_url, "/__api__/repos/")
+  repos_data <- fetch_json(repos_url)
+  
+  if (is.null(repos_data)) {
+    return(list(url = NULL, last_version = NULL, all_versions = list(), repo_id = NULL, repo_name = NULL))
+  }
+  
+  # Get all repository IDs 
+  repo_ids <- repos_data$id
+  repo_names <- repos_data$name
+  names(repo_ids) <- repo_names
+  
+  found_data <- NULL
+  found_repo_id <- NULL
+  found_repo_name <- NULL
+  
+  for (i in seq_along(repo_ids)) {
+    repo_id <- repo_ids[i]
+    repo_name <- repo_names[i]
+    
+    package_url <- paste0(base_url, "/__api__/repos/", repo_id, "/packages/", package_name)
+    data <- fetch_json(package_url)
+    
+    if (!is.null(data) && !is.null(data$version)) {
+      found_data <- data
+      found_repo_id <- repo_id
+      found_repo_name <- repo_name
+      break
+    }
+  }
+  
+  if (is.null(found_data)) {
+    return(list(url = NULL, last_version = NULL, all_versions = list(), repo_id = NULL, repo_name = NULL))
+  }
+  
+  # Process versions
+  last_version <- NULL
+  all_versions <- list()
+  
+  if (!is.null(found_data$version) && !is.null(found_data$date_publication)) {
+    last_version <- list(
+      version = found_data$version,
+      date = as.Date(substr(found_data$date_publication, 1, 10))
+    )
+    all_versions[[length(all_versions) + 1]] <- last_version
+  }
+  
+  if (!is.null(found_data$archived)) {
+    if (is.data.frame(found_data$archived)) {
+      for (i in seq_len(nrow(found_data$archived))) {
+        ver <- found_data$archived$version[i]
+        date <- as.Date(substr(found_data$archived$date[i], 1, 10))
+        all_versions[[length(all_versions) + 1]] <- list(version = ver, date = date)
+      }
+    } else if (is.list(found_data$archived)) {
+      for (av in found_data$archived) {
+        if (!is.null(av$version) && !is.null(av$date)) {
+          ver <- av$version
+          date <- as.Date(substr(av$date, 1, 10))
+          all_versions[[length(all_versions) + 1]] <- list(version = ver, date = date)
+        }
+      }
+    }
+  }
+  
+  # Determine the URL for the chosen version
+  chosen_version <- if (is.null(version)) last_version$version else version
   url <- NULL
   
-  # Extract archived versions if available
-  if (!is.null(data$archived)) {
-    if (is.data.frame(data$archived)) {
-      archived_versions <- data$archived$version
-    } else if (is.list(data$archived)) {
-      archived_versions <- sapply(data$archived, function(av) av$version)
+  # Construct the URL based on repository name and version
+  if (!is.null(chosen_version)) {
+    if (!is.null(last_version) && chosen_version == last_version$version) {
+      # Latest version URL
+      url <- paste0(base_url, "/", found_repo_name, "/latest/src/contrib/", 
+                    package_name, "_", chosen_version, ".tar.gz")
     } else {
-      archived_versions <- NULL
-    }
-    all_versions <- c(all_versions, archived_versions)
-  }
-  
-  if (is.null(version) && !is.null(last_version)) {
-    version <- last_version
-  }
-  
-  if (!is.null(last_version) && !is.null(version)) {
-    if (last_version %in% all_versions && last_version == version) {
-      url <- paste0(base_url, internal_path,
-                    package_name, "_", last_version, ".tar.gz")  
-    } else if (!is.null(version) && version %in% all_versions) {
-      url <- paste0(base_url, internal_path, "Archive/",
-                    package_name, "/", package_name, "_", version, ".tar.gz")
-    } else {
-      url <- NULL
+      # Archived version URL
+      version_list <- sapply(all_versions, function(x) x$version)
+      if (!is.null(version_list) && chosen_version %in% version_list) {
+        url <- paste0(base_url, "/", found_repo_name, "/latest/src/contrib/Archive/", 
+                      package_name, "/", package_name, "_", chosen_version, ".tar.gz")
+      }
     }
   }
   
-  return(list(url = url, last_version = last_version, all_versions = unlist(all_versions)))
+  return(list(
+    url = url, 
+    last_version = last_version, 
+    all_versions = all_versions, 
+    repo_id = found_repo_id,
+    repo_name = found_repo_name
+  ))
 }
-
 
 
 #' Check if a Package Exists on CRAN
@@ -141,8 +231,6 @@ check_cran_package <- function(package_name) {
 }
 
 
-
-
 #' Parse Package Information from CRAN Archive
 #'
 #' This function retrieves the package archive information from the CRAN Archive.
@@ -155,9 +243,7 @@ check_cran_package <- function(package_name) {
 #' @examples
 #' \dontrun{
 #' # Fetch package archive information for "dplyr"
-#' result <- parse_package_info("dplyr")
-#' 
-#' print(result)
+#' parse_package_info("dplyr")
 #'
 #'}
 #' @importFrom curl curl_fetch_memory
@@ -189,6 +275,11 @@ parse_package_info <- function(name) {
 #'   - `date`: The date associated with the package version.
 #'   - `size`: The size of the package tarball.
 #'
+#' @examples
+#' \dontrun{
+#' html_content <- parse_package_info("dplyr")
+#' parse_html_version(html_content, "dplyr")
+#'}
 #' @importFrom xml2 read_html xml_find_all xml_find_first xml_text xml_attr
 #' @keywords internal
 parse_html_version <- function(html_content, package_name) {
@@ -242,13 +333,28 @@ parse_html_version <- function(html_content, package_name) {
 
 #' Get Package Versions
 #'
-#' This function retrieves all available versions including last version from parse_html_version function'
-#' @param table A list of parsed package data, where each element contains package details including package_version.
+#' This function retrieves all available versions of a package, including the latest version,
+#' by parsing the provided version table and querying the RStudio Package Manager.
+#'
+#' @param table A list of parsed package data (e.g., from `parse_html_version()`), where each element contains package details such as `package_version` and `date`.
 #' @param package_name A character string specifying the name of the package to fetch versions for.
 #'
-#' @return A list containing:
-#'   - `all_versions`: A character vector of all unique package versions.
-#'   - `last_version`: A character string of the latest version fetched from the RStudio Package Manager, or `NULL` if not available.
+#' @return A list with the following elements:
+#' \describe{
+#'   \item{all_versions}{A list of named lists, each containing:
+#'     \describe{
+#'       \item{version}{The version number of the package.}
+#'       \item{date}{The associated publication date as a string.}
+#'     }
+#'   }
+#'   \item{last_version}{A named list containing the latest version of the package with:
+#'     \describe{
+#'       \item{version}{The latest version number.}
+#'       \item{date}{The publication date of the latest version.}
+#'     }
+#'     May be \code{NULL} if the API call fails.
+#'   }
+#' }
 #'
 #' @examples
 #' \dontrun{
@@ -270,55 +376,58 @@ parse_html_version <- function(html_content, package_name) {
 #'   )
 #' )
 #'
-#' # Use the get_versions function
 #' result <- get_versions(table, "here")
-#'
-#' # Example output
 #' print(result)
 #' }
+#'
 #' @importFrom curl curl_fetch_memory
 #' @importFrom jsonlite fromJSON
 #' @export
 get_versions <- function(table, package_name) {
   
-  # Extract all versions from the table
+  # From the CRAN Archive table
   all_versions <- lapply(table, function(item) {
-    if (!is.null(item$package_version)) item$package_version else NULL
+    if (!is.null(item$package_version)) {
+      list(
+        version = item$package_version,
+        date = as_iso_date(item$date)  # handles "YYYY-MM-DD hh:mm"
+      )
+    } else {
+      NULL
+    }
   })
   
-  # Convert all_versions to a character vector
-  all_versions <- unlist(all_versions, use.names = FALSE)
-  
-  # Fetch the latest version from RStudio Package Manager
+  # From Posit Package Manager (latest)
   url_latest_version <- paste0("https://packagemanager.posit.co/__api__/repos/1/packages/", package_name)
   response <- curl::curl_fetch_memory(url_latest_version)
   
   if (response$status_code == 200) {
-    data <- fromJSON(rawToChar(response$content))
-    last_version <- data$version
-    
-    if (!is.null(last_version)) {
-      all_versions <- unique(c(all_versions, last_version))
+    data <- jsonlite::fromJSON(rawToChar(response$content))
+    if (!is.null(data$version) && !is.null(data$date_publication)) {
+      last_version <- list(
+        version = data$version,
+        date = as_iso_date(substr(data$date_publication, 1, 10))
+      )
+      existing_versions <- sapply(all_versions, function(x) x$version)
+      if (!(last_version$version %in% existing_versions)) {
+        all_versions <- append(all_versions, list(last_version))
+      }
+    } else {
+      last_version <- NULL
     }
   } else {
     last_version <- NULL
   }
   
-  # If table is NULL, return only the last version
   if (is.null(table)) {
     return(list(
-      all_versions = if (!is.null(last_version)) last_version else NULL,
+      all_versions = if (!is.null(last_version)) list(last_version) else NULL,
       last_version = last_version
     ))
   }
   
-  # Return all versions and the last version
-  return(list(
-    all_versions = all_versions,
-    last_version = last_version
-  ))
+  list(all_versions = all_versions, last_version = last_version)
 }
-
 
 
 #' Check and Fetch CRAN Package
@@ -329,64 +438,62 @@ get_versions <- function(table, package_name) {
 #' @param package_name A character string specifying the name of the package to check and fetch.
 #' @param package_version An optional character string specifying the version of the package to fetch. Defaults to `NULL`.
 #'
-#' @return A list containing:
-#'   - `package_url`: URL to download the package tarball.
-#'   - `last_version`: Latest version available
-#'   - `version`: The requested version of the package (or `NULL` if not specified).
-#'   - `all_versions`: A character vector of all available package versions
-#'   - `error`: If the package or version is not found, an error message is included.
+#' @return A list with one of the following structures:
+#' 
+#' \describe{
+#'   \item{package_url}{Character string; the URL to download the package tarball.}
+#'   \item{last_version}{A named list with \code{version} and \code{date} for the latest available version.}
+#'   \item{version}{Character string; the requested version (or \code{NULL} if not specified).}
+#'   \item{all_versions}{A list of named lists, each with \code{version} and \code{date}, representing all available versions.}
+#' }
+#' 
 #'
 #' @examples
 #' \dontrun{
 #' # Check and fetch a specific version of "ggplot2"
 #' result <- check_and_fetch_cran_package("ggplot2", package_version = "3.3.5")
 #' print(result)
-#'}
+#' }
+#'
 #' @importFrom curl curl_fetch_memory
 #' @importFrom jsonlite fromJSON
 #' @export
 check_and_fetch_cran_package <- function(package_name, package_version = NULL) {
-  
-  # Check if the package exists on CRAN
   if (!check_cran_package(package_name)) {
-    return(list(
-      package_url = NULL,
-      last_version = NULL,
-      version = NULL,
-      all_versions = NULL
-    ))
+    return(list(package_url = NULL, last_version = NULL, version = NULL, all_versions = NULL))
   }
   
-  # Fetch CRAN package URL and versions
   html <- parse_package_info(package_name)
+  table <- if (!is.null(html)) parse_html_version(html, package_name) else NULL
+  versions <- get_versions(table, package_name)
   
-  if (!is.null(html)) {
-    table <- parse_html_version(html, package_name)
-    versions <- get_versions(table, package_name)  
-  } else {
-    table <- NULL
-    versions <- get_versions(table, package_name)  
-  }
-  
-  # Get the CRAN package URL
   url <- get_cran_package_url(package_name, package_version, versions$last_version, versions$all_versions)
   
-  # If version not found in CRAN
-  if (is.null(url) && !(package_version %in% versions$all_versions)) {
+  # Ensure all dates are ISO strings
+  all_versions_list <- lapply(versions$all_versions, function(x) {
+    list(version = x$version, date = as_iso_date(x$date))
+  })
+  
+  if (is.null(url) && !is.null(package_version) &&
+      !(package_version %in% sapply(versions$all_versions, function(x) x$version))) {
     return(list(
       error = paste("Version", package_version, "for", package_name, "not found"),
-      version_available = paste(versions$all_versions, collapse = ", ")
+      versions_available = all_versions_list
     ))
   }
   
-  # Return package URL and version details
-  return(list(
+  list(
     package_url = url,
-    last_version = versions$last_version,
+    last_version = if (is.null(versions$last_version)) NULL else list(
+      version = versions$last_version$version,
+      date = as_iso_date(versions$last_version$date)
+    ),
     version = package_version,
-    all_versions = versions$all_versions
-  ))
+    all_versions = all_versions_list
+  )
 }
+
+
 
 #' Get CRAN Package URL
 #'
@@ -394,35 +501,50 @@ check_and_fetch_cran_package <- function(package_name, package_version = NULL) {
 #'
 #' @param package_name A character string specifying the name of the package.
 #' @param version An optional character string specifying the version of the package.
-#' @param last_version A character string specifying the latest available version of the package.
-#' @param all_versions A character vector of all available versions of the package.
+#' If `NULL`, the latest version is assumed.
+#' @param last_version A named list with elements version and date, 
+#' representing the latest available version and its publication date.
+#' @param all_versions A list of named lists, each with elements version and date, 
+#' representing all known versions of the package and their publication dates.
 #'
-#' @return A character string containing the URL to download the package tarball, or `NULL`
-#' if the version is not found in the list of available versions.
+#' @return A character string containing the URL to download the package tarball,
+#' or "No valid URL found" if the version is not found in the list of available versions.
 #'
 #' @examples
-#' \donttest{
-#' url_result <- get_cran_package_url("dplyr", NULL, "1.0.10", c("1.0.0", "1.0.10"))
+#' \dontrun{
+#' # Example data structure
+#' last_version <- list(version = "1.0.10", date = "2024-01-01")
+#' all_versions <- list(
+#'   list(version = "1.0.0", date = "2023-01-01"),
+#'   list(version = "1.0.10", date = "2024-01-01")
+#' )
+#'
+#' # Get the URL for the latest version of "dplyr"
+#' url <- get_cran_package_url("dplyr", NULL, last_version, all_versions)
+#' print(url)
 #' }
 #' @export
 get_cran_package_url <- function(package_name, version, last_version, all_versions) {
+  # Extract just the version strings from the all_versions list
+  version_list <- sapply(all_versions, function(x) x$version)
+  
   # Set version to the latest version if not provided
   if (is.null(version)) {
-    version <- last_version
+    version <- last_version$version
   }
   
-  # Check if the version exists in the list of all_versions
-  if (version %in% all_versions) {
-    # If the version is the latest version
-    if (version == last_version) {
+  # Check if the version exists in version_list
+  if (version %in% version_list) {
+    # If it's the latest version
+    if (!is.null(last_version) && version == last_version$version) {
       return(paste0("https://cran.r-project.org/src/contrib/", package_name, "_", version, ".tar.gz"))
     }
     
-    # If the version is not the latest, construct the archive URL
+    # Otherwise, it's an archived version
     return(paste0("https://cran.r-project.org/src/contrib/Archive/", package_name, "/", package_name, "_", version, ".tar.gz"))
   }
   
-  # Return NULL if no valid URL is found
+  # Return fallback message
   return("No valid URL found")
 }
 
@@ -452,7 +574,12 @@ get_cran_package_url <- function(package_name, version, last_version, all_versio
 #' 
 #' If no links are found in the `DESCRIPTION` file, returns `NULL`
 #' 
-#' @keywords internal
+#' @examples
+#' \dontrun{
+#' result <- get_host_package(pkg_name, pkg_version, pkg_source_path)
+#' print(result)
+#' }
+#' @export
 get_host_package <- function(pkg_name, pkg_version, pkg_source_path) {
   
   message(glue::glue("Checking host package"))
@@ -470,7 +597,7 @@ get_host_package <- function(pkg_name, pkg_version, pkg_source_path) {
   if (d$has_fields("BugReports")) {
     bug_reports <- d$get_list("BugReports")
   } else {
-    bug_reports <- NULL  # Set to NULL or empty vector if the field is missing
+    bug_reports <- NULL  
   }  
   
   all_links <- c(urls, bug_reports)
@@ -484,21 +611,19 @@ get_host_package <- function(pkg_name, pkg_version, pkg_source_path) {
   if (length(valid) > 0) {
     github_links <- unique(paste0("https://github.com/", owner_names[valid], "/", package_names_github[valid]))
   } else {
-    github_links <- "No GitHub link found"
+    github_links <- NULL
   }
   
   is_package_valid <- check_cran_package(pkg_name)
   
   if (is_package_valid) {
     # Fetch the archive content
-    archive_html <- parse_package_info(pkg_name)
-    parsed_versions <- parse_html_version(archive_html, pkg_name)
     result_cran <- check_and_fetch_cran_package(pkg_name, pkg_version)  
     # get CRAN links
     cran_links <- get_cran_package_url(pkg_name, pkg_version, result_cran$last_version, result_cran$all_versions)
     
   } else {
-    cran_links <- "No CRAN link found"
+    cran_links <- NULL
     
   }
   
@@ -506,7 +631,7 @@ get_host_package <- function(pkg_name, pkg_version, pkg_source_path) {
   result_internal <- get_internal_package_url(pkg_name, pkg_version)
   internal_links <- result_internal$url
   
-  bioconductor_links <-  "No Bioconductor link found"
+  bioconductor_links <-  NULL
   
   # Define the Bioconductor pattern
   bioconductor_pattern <- paste0("https://(git\\.)?bioconductor\\.org/packages/", pkg_name, "/?(?=[\\s,]|$)")
@@ -527,4 +652,3 @@ get_host_package <- function(pkg_name, pkg_version, pkg_source_path) {
   
   return(result)
 }
-

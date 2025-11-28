@@ -15,6 +15,7 @@ test_that("running coverage for created package in tar file with no notes", {
   withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
                envir = parent.frame())
   
+  
   # set up package
   install_list <- set_up_pkg(dp)
   
@@ -134,7 +135,7 @@ test_that("running coverage for created package in tar file with 1 note 1 error"
 
 test_that("running coverage for created package in tar file with no tests", {
   skip_on_cran()
-  
+ 
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
                          "test.package.0004_0.1.0.tar.gz", 
@@ -179,20 +180,8 @@ test_that("running coverage for created package in tar file with no tests", {
 
 test_that("running coverage for created package in tar file with no functions", {
   skip_on_cran()
- 
-  # Copy test package to a temp file
-  dp_orig <- system.file("test-data", 
-                         "test.package.0005_0.1.0.tar.gz", 
-                         package = "risk.assessr")
-  dp <- tempfile(fileext = ".tar.gz")
-  file.copy(dp_orig, dp)
-  
-  # Defer cleanup of copied tarball
-  withr::defer(unlink(dp), envir = parent.frame())
-  
-  # Defer cleanup of unpacked source directory
-  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
-               envir = parent.frame())
+  dp <- system.file("test-data", "test.package.0005_0.1.0.tar.gz",
+                    package = "risk.assessr")
   
   install_list <- set_up_pkg(dp)
   

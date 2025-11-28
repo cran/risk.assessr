@@ -46,7 +46,7 @@ fetch_bioconductor_releases <- function() {
 #' \dontrun{
 #' html_content <- fetch_bioconductor_releases()
 #' release_data <- parse_bioconductor_releases(html_content)
-#' 
+#' print(release_data)
 #' }
 #' @export
 parse_bioconductor_releases <- function(html_content) {
@@ -157,7 +157,7 @@ parse_html_version <- function(html_content, package_name) {
 #' link <- "https://bioconductor.org/packages/3.14/bioc/src/contrib/GenomicRanges_1.42.0.tar.gz"
 #' extract_version(link, "GenomicRanges")
 #' }
-#' @export 
+#' @export
 extract_version <- function(path, package_name) {
   pattern <- paste0(package_name, "_([0-9\\.]+)\\.tar\\.gz$")
   match <- regexpr(pattern, path, perl = TRUE)
@@ -188,14 +188,16 @@ extract_version <- function(path, package_name) {
 #' 
 #' @examples
 #' \dontrun{
-#' fetch_bioconductor_package_info("3.14", "GenomicRanges")
-#' 
+#' info <- fetch_bioconductor_package_info("3.14", "GenomicRanges")
+#' print(info)
 #' }
 #' @export
 fetch_bioconductor_package_info <- function(bioconductor_version, package_name) {
   
   repo_list <- list()
   url_page <- paste0("https://bioconductor.org/packages/", bioconductor_version, "/bioc/html/", package_name, ".html")
+  
+  message("url_page: ", url_page)
   
   # Perform GET request with proper error handling
   response <- tryCatch({
@@ -280,73 +282,89 @@ fetch_bioconductor_package_info <- function(bioconductor_version, package_name) 
     return(NULL)
   })
   
-  repo_list <- append(repo_list, list(data_dict))
+  repo_list <- list(data_dict)
+  
+  archive_page <- tryCatch({
+    read_html(url_archive)
+  }, error = function(e) {
+    return(NULL)
+  })
   
   if (!is.null(archive_page)) {
     links <- xml_find_all(archive_page, "//a")
     hrefs <- xml_attr(links, "href")
     archive_tar_gz_links <- hrefs[grepl("\\.tar\\.gz$", hrefs)]
-    full_archive_links <- rev(paste0(url_archive, archive_tar_gz_links))
     
-    for (link in full_archive_links) {
-      version <- extract_version(link, package_name)
-      repo <- list(
-        version = version, 
-        url = data_dict$url_package, 
-        source_package = link, 
-        archived = TRUE, 
-        bioconductor_version = bioconductor_version
-      )
-      repo_list <- append(repo_list, list(repo))
+    if (length(archive_tar_gz_links) > 0) {
+      full_archive_links <- rev(paste0(url_archive, archive_tar_gz_links))
+      
+      for (link in full_archive_links) {
+        version <- extract_version(link, package_name)
+        repo <- list(
+          version = version, 
+          url = data_dict$url_package, 
+          source_package = link, 
+          archived = TRUE, 
+          bioconductor_version = bioconductor_version
+        )
+        repo_list <- append(repo_list, list(repo))
+      }
     }
   }
   
   return(repo_list)
 }
 
+
 #' Retrieve Bioconductor Package URL
-#' 
+#'
 #' This function fetches the source package URL for a given Bioconductor package.
 #' If no version is specified, it retrieves the latest available version.
-#' Currently, this function is not able to fetch archived package version for a bioconductor version
-#' 
+#'
 #' @param package_name A character string specifying the name of the Bioconductor package.
 #' @param package_version (Optional) A character string specifying the package version. Defaults to `NULL`, which retrieves the latest version.
 #' @param release_data A list containing Bioconductor release information.
-#' 
-#' @return A list containing the following elements:
+#'
+#' @return A list containing:
 #'  \item{url}{The URL of the source package (if available).}
 #'  \item{version}{The specified or latest available package version.}
-#'  \item{last_version}{The last available version of the package.}
-#'  \item{all_versions}{A vector of all discovered versions of the package.}
-#'  \item{bioconductor_version_package}{The Bioconductor version associated with the package.}
+#'  \item{last_version}{A list with version, date, and Bioconductor version.}
+#'  \item{all_versions}{A list of all discovered versions with version, date, and Bioconductor version.}
+#'  \item{bioconductor_version_package}{The Bioconductor version matched to the selected version.}
 #'  \item{archived}{A logical value indicating whether the package is archived.}
-#' 
-#' 
+#'
 #' @examples
 #' \dontrun{
 #' release_data <- list(
-#'   list(release = "3.12"),
-#'   list(release = "3.13"),
-#'   list(release = "3.14")
+#'   list(release = "3.17", date = "October 14, 2005"),
+#'   list(release = "3.18", date = "October 4, 2006"),
+#'   list(release = "3.19", date = "October 8, 2007")
 #' )
 #' 
 #' get_bioconductor_package_url("GenomicRanges", release_data = release_data)
 #' 
-#' 
-#' 
 #'}
 #' @export
-get_bioconductor_package_url <- function(package_name, package_version=NULL, release_data) {
+get_bioconductor_package_url <- function(package_name, package_version = NULL, release_data) {
   
-  all_versions <- c()
+  all_versions <- list()
   source_code <- NULL
   bioconductor_version_package <- NULL
   archived <- NULL
   last_version <- NULL
+  Sys.setlocale("LC_TIME", "C")
   
   for (version_info in release_data) {
+    
     bioconductor_version <- version_info$release
+    parsed_date <- strptime(version_info$date, format = "%B %d, %Y")
+    
+    # Convert to Date type
+    if (!is.na(parsed_date)) {
+      bioconductor_date <- format(as.Date(parsed_date), "%Y-%m-%d")
+    } else {
+      bioconductor_date <- NA
+    }
     
     message(paste("Checking Bioconductor version:", bioconductor_version))
     
@@ -356,48 +374,58 @@ get_bioconductor_package_url <- function(package_name, package_version=NULL, rel
     }, error = function(e) {
       message(paste("Skipping Bioconductor version", bioconductor_version, "due to error:", e$message))
       return(NULL)
-    }
-    )
+    })
     
-    if (is.null(package_info) || !is.list(package_info)) next 
+    if (is.null(package_info) || !is.list(package_info)) next
     
     # Ensure package_info is treated as a list of packages
     if (!is.null(package_info$version)) {
-      package_info <- list(package_info) 
+      package_info <- list(package_info)
     }
     
     for (pkg in package_info) {
-      if (!is.list(pkg) || is.null(pkg$version)) next 
+      if (!is.list(pkg) || is.null(pkg$version)) next
       
       pkg_version <- pkg$version
-      message(paste("Checking package version:", pkg_version))
+      message(paste("Checking package version:", pkg_version, "Date:", bioconductor_date))
       
-      if (!is.null(pkg_version) && !is.na(pkg_version)) {
+      version_record <- list(
+        version = pkg_version,
+        date = bioconductor_date,
+        bioconductor_version = bioconductor_version
+      )
+      
+      # Add to all_versions (no deduplication needed if you trust the data)
+      all_versions <- append(all_versions, list(version_record))
+      
+      # Update last_version if this version is newer
+      if (is.null(last_version)) {
+        last_version <- version_record
+      } else if (!is.na(bioconductor_date) && !is.na(last_version$date) && bioconductor_date > last_version$date) {
+        last_version <- version_record
+      } else if (is.na(last_version$date) && !is.na(bioconductor_date)) {
+        last_version <- version_record
+      }
+      
+      # Set default package version if not specified
+      if (is.null(package_version) || length(package_version) == 0 || is.na(package_version)) {
+        package_version <- last_version$version
+      }
+      
+      # Check if this version matches the requested version
+      if (!is.null(pkg_version) && !is.null(package_version) &&
+          !is.na(pkg_version) && !is.na(package_version) &&
+          pkg_version == package_version) {
         
-        # Store last available version
-        if (is.null(last_version)) {
-          last_version <- pkg_version 
-        }    
-        
-        all_versions <- unique(c(all_versions, pkg_version))
-        
-        if (is.null(package_version) || length(package_version) == 0 || is.na(package_version)) {
-          package_version <- last_version
-        }
-        
-        # Ensure both versions are neither NULL nor NA before comparison
-        if (!is.null(pkg_version) && !is.null(package_version) && 
-            !is.na(pkg_version) && !is.na(package_version) && pkg_version == package_version) {
-          bioconductor_version_package <- pkg$bioconductor_version
-          source_code <- pkg$source_package
-          archived <- pkg$archived
-        } 
+        bioconductor_version_package <- bioconductor_version
+        source_code <- pkg$source_package
+        archived <- ifelse(!is.null(pkg$archived), pkg$archived, FALSE)
       }
     }
   }
   
   if (is.null(source_code)) {
-    warning("Package URL not found. Possible reasons: invalid package name, unavailable version, or incorrect Bioconductor version.")
+    message("Package URL not found on Bioconductor")
   }
   
   return(list(
@@ -408,4 +436,118 @@ get_bioconductor_package_url <- function(package_name, package_version=NULL, rel
     bioconductor_version_package = bioconductor_version_package,
     archived = archived
   ))
+}
+
+
+
+
+#' Find Bioconductor Package Reverse Dependencies 
+#'
+#' This function returns the reverse dependencies for a given Bioconductor package.
+#'
+#' @param pkg Character string. The name of the package for which to find reverse dependencies.
+#' @param which Character vector. The dependency categories to check.
+#'   One or more of \code{"Depends"}, \code{"Imports"}, \code{"LinkingTo"},
+#'   \code{"Suggests"}, or \code{"Enhances"}. Defaults to \code{"Imports"}.
+#' @param only.bioc Logical. If \code{TRUE} (default), only reverse dependencies
+#'   that are Bioconductor packages are returned.
+#' @param version Bioconductor version to use. Defaults to the current version.
+#' @param db Optional. A pre-loaded package database to use for lookups.
+#' @param biocdb Optional. A pre-loaded Bioconductor package database.
+#'
+#' @return A named list of reverse dependency package names.
+#'
+#' @examples
+#' \donttest{
+#' # Get reverse Imports dependencies as a list:
+#' bioconductor_reverse_deps("limma")
+#' 
+#' # Get multiple categories:
+#' bioconductor_reverse_deps("limma", which = c("Depends", "Suggests"))
+#' }
+#' @importFrom BiocManager version
+#' @importFrom BiocManager repositories
+#' @export
+bioconductor_reverse_deps <- function(
+  pkg,
+  which = "Imports",
+  only.bioc = FALSE,
+  version = BiocManager::version(),
+  db = NULL,          
+  biocdb = NULL   
+) {
+  valid_which <- c("Depends", "Imports", "LinkingTo", "Suggests", "Enhances")
+
+  if ("all" %in% which) {
+    which_vec <- valid_which
+  } else if (!all(which %in% valid_which)) {
+    message("Invalid 'which' value. Must be one or more of: ",
+            paste(valid_which, collapse = ", "), " or 'all'.")
+    return(NULL)
+  } else {
+    which_vec <- which
+  }
+
+  # data source
+  if (is.null(db)) {
+    repos <- BiocManager::repositories(version = version, replace = TRUE)
+
+    read_packages_index <- function(repo_url) {
+      
+      idx <- utils::contrib.url(repo_url, type = "source")
+      urls <- c(file.path(idx, "PACKAGES.gz"), file.path(idx, "PACKAGES"))
+      
+      read_one <- function(u) {
+        con <- NULL
+        on.exit(try(close(con), silent = TRUE), add = TRUE)
+        con <- if (grepl("\\.gz$", u)) gzcon(url(u, "rb")) else url(u, "rb")
+        dcf <- tryCatch(read.dcf(con), error = function(e) NULL)
+        if (is.null(dcf)) return(NULL)
+        df <- as.data.frame(dcf, stringsAsFactors = FALSE, optional = TRUE)
+        if (!nrow(df)) return(NULL)
+        needed <- c("Package","Depends","Imports","LinkingTo","Suggests","Enhances")
+        for (nm in setdiff(needed, names(df))) df[[nm]] <- NA_character_
+        rownames(df) <- df$Package
+        df[ , needed, drop = FALSE]
+      }
+      for (u in urls) {
+        out <- tryCatch(read_one(u), error = function(e) NULL)
+        if (!is.null(out)) return(out)
+      }
+      NULL
+    }
+
+    db_list <- lapply(unname(repos), read_packages_index)
+    db_list <- Filter(Negate(is.null), db_list)
+
+    if (!length(db_list)) {
+      message("Error fetching package database: could not read any PACKAGES indexes.")
+      return(NULL)
+    }
+    db <- do.call(rbind, db_list)
+  } else {
+    db <- as.data.frame(db, stringsAsFactors = FALSE)
+    if (is.null(rownames(db)) && "Package" %in% names(db)) rownames(db) <- db$Package
+    needed <- c("Package","Depends","Imports","LinkingTo","Suggests","Enhances")
+    for (nm in setdiff(needed, names(db))) db[[nm]] <- NA_character_
+    db <- db[, needed, drop = FALSE]
+  }
+
+  if (isTRUE(only.bioc)) {
+    if (is.null(biocdb)) {
+      repos <- BiocManager::repositories(version = version, replace = TRUE)
+      biocdb <- db
+    } else {
+      biocdb <- as.data.frame(biocdb, stringsAsFactors = FALSE)
+      if (is.null(rownames(biocdb)) && "Package" %in% names(biocdb)) rownames(biocdb) <- biocdb$Package
+    }
+    db <- db[rownames(db) %in% rownames(biocdb), , drop = FALSE]
+  }
+
+  out <- lapply(which_vec, function(w) {
+    res <- tools::package_dependencies(packages = pkg, db = db, reverse = TRUE, which = w)[[pkg]]
+    if (is.null(res)) character(0) else unname(res)
+  })
+  names(out) <- which_vec
+  out
 }

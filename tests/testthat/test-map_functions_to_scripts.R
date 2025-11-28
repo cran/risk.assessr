@@ -15,6 +15,7 @@ test_that("map_functions_to_scripts handles missing code_script correctly", {
       # Create a sample exports_df
       exports_df <- data.frame(
         exported_function = c("func1", "func2"),
+        class = c(NA, NA),
         stringsAsFactors = FALSE
       )
       
