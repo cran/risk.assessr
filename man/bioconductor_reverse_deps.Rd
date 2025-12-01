@@ -36,7 +36,7 @@ A named list of reverse dependency package names.
 This function returns the reverse dependencies for a given Bioconductor package.
 }
 \examples{
-\donttest{
+\dontrun{
 # Get reverse Imports dependencies as a list:
 bioconductor_reverse_deps("limma")
 

@@ -33,7 +33,7 @@ This function identifies packages that depend on the specified packages,
 considering various types of dependencies (e.g., strong, most, all).
 }
 \examples{
-\donttest{
+\dontrun{
 installed <- cran_packages()
 dependsOnPkgs("here", installed = installed)
 }

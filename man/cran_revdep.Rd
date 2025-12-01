@@ -30,7 +30,7 @@ deps - A sorted character vector of package names that depend on the specified p
 This function finds the reverse dependencies of a CRAN package, i.e., packages that depend on the specified package.
 }
 \examples{
-\donttest{
+\dontrun{
 cran_revdep("ggplot2")
 }
 

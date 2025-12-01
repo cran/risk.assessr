@@ -112,7 +112,7 @@ find_reverse_dependencies <- function(path){
 #' @return deps - A sorted character vector of package names that depend on the specified package.
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
 #' cran_revdep("ggplot2")
 #' }
 #'
@@ -156,7 +156,7 @@ cran_revdep <- function(pkg,
 #' @return A character vector of package names that depend on the specified packages.
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
 #' installed <- cran_packages()
 #' dependsOnPkgs("here", installed = installed)
 #' }

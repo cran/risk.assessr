@@ -1,3 +1,10 @@
+# risk.assessr 3.0.1
+
+## New Features
+
+- this version fixes issues found in the CRAN check
+
+
 # risk.assessr 3.0.0
 
 ## New Features

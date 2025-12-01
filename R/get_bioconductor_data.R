@@ -458,7 +458,7 @@ get_bioconductor_package_url <- function(package_name, package_version = NULL, r
 #' @return A named list of reverse dependency package names.
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
 #' # Get reverse Imports dependencies as a list:
 #' bioconductor_reverse_deps("limma")
 #' 

@@ -4,8 +4,19 @@ test_that("get_exports works correctly with regular functions", {
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
   
-  dp <- system.file("test-data", "test.package.0001_0.1.0.tar.gz",
-                    package = "risk.assessr")
+  # Copy test package to a temp file
+  dp_orig <- system.file("test-data", 
+                         "test.package.0001_0.1.0.tar.gz", 
+                         package = "risk.assessr")
+  dp <- tempfile(fileext = ".tar.gz")
+  file.copy(dp_orig, dp)
+  
+  # Defer cleanup of copied tarball
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  # Defer cleanup of unpacked source directory
+  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
+               envir = parent.frame())
   
   # set up package
   install_list <- risk.assessr::set_up_pkg(dp)
@@ -43,8 +54,19 @@ test_that("get_exports works correctly with no R functions", {
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
   
-  dp <- system.file("test-data", "test.package.0005_0.1.0.tar.gz",
-                    package = "risk.assessr")
+  # Copy test package to a temp file
+  dp_orig <- system.file("test-data", 
+                         "test.package.0005_0.1.0.tar.gz", 
+                         package = "risk.assessr")
+  dp <- tempfile(fileext = ".tar.gz")
+  file.copy(dp_orig, dp)
+  
+  # Defer cleanup of copied tarball
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  # Defer cleanup of unpacked source directory
+  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
+               envir = parent.frame())
   
   # set up package
   install_list <- risk.assessr::set_up_pkg(dp)
@@ -121,9 +143,20 @@ test_that("get_exports works correctly with nonstandard NAMESPACE", {
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
 
-  dp <- system.file("test-data", "test.package.0012_0.1.0.tar.gz",
-                  package = "risk.assessr")
-
+  # Copy test package to a temp file
+  dp_orig <- system.file("test-data", 
+                         "test.package.0012_0.1.0.tar.gz", 
+                         package = "risk.assessr")
+  dp <- tempfile(fileext = ".tar.gz")
+  file.copy(dp_orig, dp)
+  
+  # Defer cleanup of copied tarball
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  # Defer cleanup of unpacked source directory
+  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
+               envir = parent.frame())
+  
   # set up package
   install_list <- risk.assessr::set_up_pkg(dp)
 
@@ -192,8 +225,19 @@ test_that("get_exports works correctly with S3 functions", {
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
   
-  dp <- system.file("test-data", "test.package.0009_0.1.0.tar.gz",
-                    package = "risk.assessr")
+  # Copy test package to a temp file
+  dp_orig <- system.file("test-data", 
+                         "test.package.0009_0.1.0.tar.gz", 
+                         package = "risk.assessr")
+  dp <- tempfile(fileext = ".tar.gz")
+  file.copy(dp_orig, dp)
+  
+  # Defer cleanup of copied tarball
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  # Defer cleanup of unpacked source directory
+  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
+               envir = parent.frame())
   
   # set up package
   install_list <- risk.assessr::set_up_pkg(dp)
@@ -234,8 +278,19 @@ test_that("get_exports works correctly with S4 functions", {
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
   
-  dp <- system.file("test-data", "test.package.0010_0.1.0.tar.gz",
-                    package = "risk.assessr")
+  # Copy test package to a temp file
+  dp_orig <- system.file("test-data", 
+                         "test.package.0010_0.1.0.tar.gz", 
+                         package = "risk.assessr")
+  dp <- tempfile(fileext = ".tar.gz")
+  file.copy(dp_orig, dp)
+  
+  # Defer cleanup of copied tarball
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  # Defer cleanup of unpacked source directory
+  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
+               envir = parent.frame())
   
   # set up package
   install_list <- risk.assessr::set_up_pkg(dp)
@@ -274,8 +329,19 @@ test_that("get_exports works correctly with R6 functions", {
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
   
-  dp <- system.file("test-data", "test.package.0011_0.1.0.tar.gz",
-                    package = "risk.assessr")
+  # Copy test package to a temp file
+  dp_orig <- system.file("test-data", 
+                         "test.package.0011_0.1.0.tar.gz", 
+                         package = "risk.assessr")
+  dp <- tempfile(fileext = ".tar.gz")
+  file.copy(dp_orig, dp)
+  
+  # Defer cleanup of copied tarball
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  # Defer cleanup of unpacked source directory
+  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
+               envir = parent.frame())
   
   # set up package
   install_list <- risk.assessr::set_up_pkg(dp)

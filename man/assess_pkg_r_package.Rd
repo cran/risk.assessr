@@ -35,7 +35,7 @@ r <- getOption("repos")
 # save current repo options  
 old <- options(repos = r)
 r["CRAN"] = "http://cran.us.r-project.org"
-options(repos = r)#' 
+options(repos = r) 
 
 results <- assess_pkg_r_package("here", version = "1.0.1")
 

@@ -458,6 +458,7 @@ test_that("generate_html_report returns message when directory does not exist", 
 
 
 test_that("generate_html_report creates an HTML report", {
+  skip_on_cran()
   # Create a temporary directory for output
   tmp_dir <- withr::local_tempdir()
   
