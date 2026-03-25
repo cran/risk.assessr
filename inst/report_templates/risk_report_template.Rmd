@@ -2,7 +2,6 @@
 title: "&nbsp;"
 output:
   rmarkdown::html_document:
-  css: www/styles.css
 editor_options: 
   chunk_output_type: console
 ---
@@ -229,53 +228,281 @@ library(knitr)
 library(kableExtra)
 doc_metrics_output <- get("doc_metrics_output", envir = report_env)
 
-# Render the table using knitr and kableExtra
-# Display df
-doc_metrics_output_html <- knitr::kable((doc_metrics_output),
-                               col.names = c(
-                                 "Metric Type",
-                                 "Value"
-                                 ),
-                          "html")
+
+# --- Extract the doc metrics section ---
+doc_metrics_df    <- doc_metrics_output$doc_metrics
 
 
-kableExtra::kable_styling(doc_metrics_output_html, 
-                          "striped", 
-                          position = "left", 
-                          font_size = 12) %>%
-  kableExtra::row_spec(0, 
-                       bold = TRUE,
-                       italic = TRUE,
-                       background = "yellow"
-                               ) %>%
-  kableExtra::row_spec(which(doc_metrics_output$Value != "Not Included"), 
-                       background = "green") %>%
-  kableExtra::row_spec(which(doc_metrics_output$Value == "Not Included"), 
-                       background = "red") %>%
+# -------------------------
+# 1) Documentation Metrics (keep existing styling)
+# -------------------------
+doc_metrics_output_html <- knitr::kable(
+  doc_metrics_df,
+  col.names = c("Metric Type", "Value"),
+  format = "html"
+)
+
+doc_metrics_kbl <- kableExtra::kable_styling(
+  doc_metrics_output_html,
+  "striped",
+  position = "left",
+  font_size = 12
+) %>%
   kableExtra::row_spec(0, bold = TRUE, italic = TRUE, background = "yellow") %>%
-  kableExtra::row_spec(which(doc_metrics_output$Value == "Included"), background = "green") %>%
-  kableExtra::row_spec(which(doc_metrics_output$Value == "Not Included"), background = "red") %>%
+  kableExtra::row_spec(which(doc_metrics_df$Value != "Not Included"), background = "green") %>%
+  kableExtra::row_spec(which(doc_metrics_df$Value == "Not Included"), background = "red") %>%
+  # Highlight links present for URL-like metrics
   kableExtra::row_spec(
     which(
-      doc_metrics_output$Metric %in% c("Has Bug Reports URL", "Has Source Control", "Has Website") &
-      grepl("^https://", doc_metrics_output$Value)
+      doc_metrics_df$Metric %in% c("Has Bug Reports URL", "Has Source Control", "Has Website") &
+        grepl("^https?://", doc_metrics_df$Value)
     ),
     background = "green"
   ) %>%
+  # Maintainer present vs missing (treat NA/empty as missing)
   kableExtra::row_spec(
-    which(doc_metrics_output$Metric == "Has Maintainer" & !sapply(doc_metrics_output$Value, is.null)),
+    which(doc_metrics_df$Metric == "Has Maintainer" & !is.na(doc_metrics_df$Value) & nzchar(doc_metrics_df$Value)),
     background = "green"
   ) %>%
   kableExtra::row_spec(
-    which(doc_metrics_output$Metric == "Has Maintainer" & sapply(doc_metrics_output$Value, is.null)),
+    which(doc_metrics_df$Metric == "Has Maintainer" & (is.na(doc_metrics_df$Value) | !nzchar(doc_metrics_df$Value))),
     background = "red"
   ) %>%
-  kableExtra::row_spec(
-    which(doc_metrics_output$Value == "N/A"),
-    background = "red"
-  ) %>%
-  kableExtra::add_header_above(c("Documentation Metrics" = 2), bold = TRUE, background = "yellow", color = "black")
+  # Treat "N/A" as not present
+  kableExtra::row_spec(which(doc_metrics_df$Value == "N/A"), background = "red") %>%
+  kableExtra::add_header_above(
+    c("Documentation Metrics" = 2),
+    bold = TRUE, background = "yellow", color = "black"
+  )
+
+
+  # render doc metrics
+  doc_metrics_kbl
+
 ```
+
+```{r doc_examples, echo=FALSE}
+library(knitr)
+library(kableExtra)
+doc_metrics_output <- get("doc_metrics_output", envir = report_env)
+
+# Fetch thresholds
+example_maxes <- get("example_maxes", envir = report_env)
+
+
+# --- Extract the example section ---
+
+has_examples_df   <- doc_metrics_output$has_examples
+
+
+# Scores are stored as attributes on the data.frames
+has_examples_score <- attr(has_examples_df, "score")
+
+has_examples_score <- has_examples_score * 100
+
+# Build text for the sub-header
+sub_header <- sprintf(
+  "Percentage of functions with examples (score: %s%%)",
+  ifelse(is.na(has_examples_score), "NA", has_examples_score)
+)
+
+
+# Determine sub-header color
+header_color <- if (is.na(has_examples_score)) {
+  "red"
+} else if (has_examples_score > example_maxes$medium_max) {
+  "green"
+} else if (has_examples_score < example_maxes$high_max) {
+  "red"
+} else {
+  "yellow"
+}
+
+
+# 1) Ensure no row names 
+rownames(has_examples_df) <- NULL
+
+
+# Ensure the data frame has exactly 4 columns in this order
+colnames(has_examples_df) <- c(
+  "Function Name",
+  "Documentation Name",
+  "Documentation Location",
+  "Example"
+)
+
+examples_kbl <- has_examples_df %>%
+  knitr::kable("html", escape = TRUE, row.names = FALSE) %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped"),
+    position = "left",
+    font_size = 12
+  ) %>%
+  # Sub-header BELOW main header (but ABOVE column names)
+  kableExtra::add_header_above(
+    setNames(ncol(has_examples_df), sub_header),
+    bold = TRUE,
+    background = header_color,
+    color = "black"
+  ) %>%
+  # Main header ABOVE everything
+  kableExtra::add_header_above(
+    c("Documentation of Examples" = ncol(has_examples_df)),
+    bold = TRUE,
+    background = "yellow",
+    color = "black"
+  ) %>%
+  # Style the column header row (row 0)
+  kableExtra::row_spec(0, bold = TRUE, italic = TRUE, background = "yellow") %>%
+  # Conditionally color data rows red where Example == "no example"
+   kableExtra::row_spec(
+    which(has_examples_df$Example == "no example" | has_examples_df$Example == "no Rd file"),
+    background = "red")
+
+examples_kbl
+
+```
+
+```{r func_docs_summary, echo=FALSE}
+library(knitr)
+library(kableExtra)
+
+
+# --- Fetch documentation metrics and thresholds ---
+doc_metrics_output <- get("doc_metrics_output", envir = report_env)
+func_doc_maxes     <- get("func_doc_maxes", envir = report_env)
+
+# Extract the has_docs dataframe
+has_docs_df   <- doc_metrics_output$has_docs
+has_docs_score <- attr(has_docs_df, "score")
+
+has_docs_score <- has_docs_score * 100
+
+# --- Build the summary dataframe (1 row) ---
+num_doc_functions <- if (has_docs_score == 0) 0 else nrow(has_docs_df)
+
+func_docs_summary <- data.frame(
+  `Number of Documented Functions` = num_doc_functions,
+  check.names = FALSE
+)
+
+# --- Build subheader text (same style as detailed table) ---
+sub_header_docs <- sprintf(
+  "Percentage of functions with documentation (score: %s%%)",
+  ifelse(is.na(has_docs_score), "NA", has_docs_score)
+)
+
+# --- Determine header color using same logic as details display ---
+header_color <- if (is.na(has_docs_score)) {
+  "red"
+} else if (has_docs_score > func_doc_maxes$medium_max) {
+  "green"
+} else if (has_docs_score < func_doc_maxes$high_max) {
+  "red"
+} else {
+  "yellow"
+}
+
+# --- Build summary table using identical kableExtra styling ---
+kbl_cols <- ncol(func_docs_summary)
+
+func_docs_summary_html <- func_docs_summary %>%
+  knitr::kable("html", escape = TRUE, row.names = FALSE) %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped"),
+    position = "left",
+    font_size = 12
+  ) %>%
+  
+  # Sub-header BELOW main header
+  kableExtra::add_header_above(
+    setNames(kbl_cols, sub_header_docs),
+    bold = TRUE,
+    background = header_color,
+    color = "black"
+  ) %>%
+  
+  # Main header ABOVE everything
+  kableExtra::add_header_above(
+    setNames(kbl_cols, "Function Documentation Summary"),
+    bold = TRUE,
+    background = "yellow",
+    color = "black"
+  ) %>%
+  
+  # Style the column header row
+  kableExtra::row_spec(
+    0,
+    bold = TRUE,
+    italic = TRUE,
+    background = "yellow"
+  ) %>%
+  
+  
+# Apply row coloring based on thresholds (mirrors reverse‑deps logic)
+{
+  val <- func_docs_summary$`Number of Documented Functions`
+
+  if (!is.null(func_doc_maxes)) {
+
+    if (val < func_doc_maxes$high_max) {
+      kableExtra::row_spec(., 1, background = "red")
+
+    } else if (val > func_doc_maxes$medium_max) {
+      kableExtra::row_spec(., 1, background = "green")
+
+    } else {
+      kableExtra::row_spec(., 1, background = "yellow")
+    }
+
+  } else {
+    .   # ← return table unchanged if no thresholds available
+  }
+}
+
+
+func_docs_summary_html
+```
+
+```{r func_docs_details, echo=FALSE}
+library(knitr)
+library(kableExtra)
+library(DT)
+
+# Fetch the documentation dataframe
+doc_metrics_output <- get("doc_metrics_output", envir = report_env)
+
+has_docs_df  <- doc_metrics_output$has_docs
+
+colnames(has_docs_df) <- c(
+  "Function Name",
+  "Documentation Name",
+  "Documentation Location"
+)
+
+# Final ordering
+
+rownames(has_docs_df) <- NULL
+
+# Build the DT table
+func_docs_details_html_DT <- DT::datatable(
+  has_docs_df,
+  rownames = FALSE,
+  escape = TRUE,
+  options = list(
+    pageLength = 10,
+    lengthMenu = c(10, 20, 50),
+    search = list(search = "")
+  )
+) %>%
+  htmlwidgets::onRender("function(el, x) {
+    $(el).find('thead').hide();
+  }")
+
+# Display details table
+func_docs_details_html_DT
+```
+
 
 ```{r pop_metrics, echo=FALSE}
 library(knitr)

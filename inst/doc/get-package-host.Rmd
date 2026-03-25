@@ -136,3 +136,15 @@ valid <- which(owner_names != "" & package_names_github != "")
 
 github_links
 ```
+
+
+
+## Get R package source code
+
+```{r}
+tarball_path <- get_package_tarfile("dplyr", version = "1.0.0")
+```
+
+
+
+

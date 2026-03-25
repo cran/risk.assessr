@@ -7,7 +7,7 @@
 #'   to all downstream map_* helpers
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
 #' tmpdir <- tempdir()
 #'
 #' # Locate the package source tarball bundled with risk.assessr
@@ -40,9 +40,8 @@ get_exports <- function(pkg_source_path) {
   exp_possible <- contains_r_folder(pkg_source_path)
   
   if (exp_possible == TRUE) {
-  
-    result <- extract_exported_function_info(pkg_source_path, package_name)
     
+    result <- extract_exported_function_info(pkg_source_path, package_name)
     
     # check if func_df is empty of values    
     is_empty <- result %>% 
@@ -59,10 +58,10 @@ get_exports <- function(pkg_source_path) {
         where = package_name
       )  
     } else {   
-    
+      
       message(glue::glue("Extracting exported function bodies for {package_name}"))
       
-      # ensure that every function_body is consistently a character vector, 
+      #ensure that every function_body is consistently a character vector, 
       # even if it's a serialized version of a list (e.g., for R6 methods).
       normalize_function_body <- function(row, package_name) {
         info <- classify_function_body(row, package_name)
@@ -81,6 +80,7 @@ get_exports <- function(pkg_source_path) {
       #result_df_list <- as.data.frame(t(apply(result, 1, function(row) {
       #  as.list(classify_function_body(as.list(row), package_name))
       #})))
+      
       
       result_df_list <- as.data.frame(t(apply(result, 1, function(row) {
         as.list(normalize_function_body(as.list(row), package_name))
@@ -122,14 +122,17 @@ get_exports <- function(pkg_source_path) {
 #' @return A tibble with columns: `exported_function`, `class`, `function_type`, `function_body`, and `where`.
 #' @keywords internal
 extract_exported_function_info <- function(.pkg_source_path, package_name) {
+  
   nsInfo <- parseNamespaceFile(package_name, dirname(.pkg_source_path), mustExist = FALSE)
   
   message(glue::glue("Extracting exported function names for {package_name}"))
   
-  exports <- if (!is.null(nsInfo) && !rlang::is_empty(nsInfo$exports)) {
-    unname(unlist(nsInfo[["exports"]]))
+  exports <- character(0)
+  
+  if (!is.null(nsInfo) && !rlang::is_empty(nsInfo$exports)) {
+    exports <- unname(unlist(nsInfo[["exports"]]))
   } else {
-    getNamespaceExports(package_name)
+    exports <- getNamespaceExports(package_name)
   }
   
   # Fallback: parse export() entries manually from NAMESPACE file
@@ -154,6 +157,7 @@ extract_exported_function_info <- function(.pkg_source_path, package_name) {
   # Define packages that manually export helpers like .data
   preserve_helpers_pkgs <- c("ggplot2", "rlang", "dplyr", "tidyselect")
   
+  # Build export_info
   export_info <- lapply(exports, function(f) {
     obj <- suppressWarnings(
       tryCatch(getExportedValue(package_name, f), error = function(e) NULL)
@@ -298,6 +302,9 @@ extract_exported_function_info <- function(.pkg_source_path, package_name) {
   return(result)
 }
 
+
+
+
 #' Extract package name from package source path
 #'
 #' @param pkg_source_path a file path pointing to an unpacked/untarred package directory
@@ -306,18 +313,21 @@ extract_exported_function_info <- function(.pkg_source_path, package_name) {
 #'
 #' @keywords internal
 extract_package_name <- function(pkg_source_path) {
-  # Split the path by "::"
+  # Split the path by "::" in case it's a compound path
   parts <- strsplit(pkg_source_path, "::")[[1]]
   
   # Extract the part before "::"
   package_part <- parts[1]
   
-  # Remove everything before the package name and the version
-  package_name <- sub(".*[/\\\\]", "", package_part)
-  package_name <- sub("-[0-9.]+$", "", package_name)
+  # Remove everything before the package name and version
+  package_name_with_version <- sub(".*[/\\\\]", "", package_part)
+  
+  # Extract only the package name (before the first hyphen followed by a digit)
+  package_name <- sub("-[0-9].*$", "", package_name_with_version)
   
   return(package_name)
 }
+
 
 #' Extract all S4 methods 
 #'
@@ -611,7 +621,12 @@ classify_function_body <- function(row, package_name) {
   if (!is.null(S3_value)) {
     row$function_body <- paste(deparse(S3_value$func), collapse = "\n")
     if (inherits(S3_value$func, "function")) {
-      row$function_type <- "S3 function"
+      func_body <- deparse(S3_value$func)
+      if (any(grepl("UseMethod\\(", func_body))) {
+        row$function_type <- "S3 generic function"
+      } else {
+        row$function_type <- "regular function"
+      }
     }
     if (S3_value$has_r6_class) {
       row$function_type <- paste(row$function_type, "R6 class", sep = ", ")
@@ -690,13 +705,9 @@ classify_function_body <- function(row, package_name) {
       row$function_body <- paste(deparse(func_body), collapse = "\n")
     }
     if (is.na(row$function_type)) {
-      row$function_type <- "regular"
+      row$function_type <- "regular function"
     }
   }
   
   return(row)
 }
-
-
-
-

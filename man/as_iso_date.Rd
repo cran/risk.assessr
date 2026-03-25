@@ -25,9 +25,4 @@ dropped. For `POSIXct` inputs, the date is computed by `as.Date.POSIXct`
 dates (e.g., `"01/02/2024"`) depend on your R locale/format unless you
 specify a format before calling this function.
 }
-\examples{
-as_iso_date(Sys.Date())
-as_iso_date(NULL)              
-as_iso_date("not-a-date")
-
-}
+\keyword{internal}

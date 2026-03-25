@@ -8,6 +8,12 @@ mock_file_choose <- function() {
 # Define the test
 test_that("risk_assess_pkg works with mocked file.choose", {
   skip_on_cran()
+  
+  skip_if(
+    .Platform$OS.type == "windows",
+    "risk_assess_pkg runs file.choose on Windows; mocking paths is not reliable under devtools::check()"
+  )
+  
   # Stub file.choose with the mock function
   mockery::stub(risk_assess_pkg, "file.choose", mock_file_choose)
   
@@ -18,7 +24,7 @@ test_that("risk_assess_pkg works with mocked file.choose", {
   
   testthat::expect_true(checkmate::check_class(risk_assess_package, "list"))
   
-  testthat::expect_identical(length(risk_assess_package$results), 30L)
+  testthat::expect_identical(length(risk_assess_package$results), 32L)
   
   testthat::expect_true(!is.na(risk_assess_package$results$pkg_name))
   
@@ -128,6 +134,12 @@ test_that("risk_assess_pkg works with mocked file.choose", {
 
 test_that("risk_assess_pkg works with mocked file.choose and get_host_package", {
   skip_on_cran()
+  
+  skip_if(
+    .Platform$OS.type == "windows",
+    "risk_assess_pkg runs file.choose on Windows; mocking paths is not reliable under devtools::check()"
+  )
+  
   # Stub file.choose with the mock function (already handled)
   mockery::stub(risk_assess_pkg, "file.choose", mock_file_choose)
 
@@ -156,6 +168,11 @@ test_that("risk_assess_pkg works with path params", {
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
 
+  skip_if(
+    .Platform$OS.type == "windows",
+    "risk_assess_pkg runs system.file on Windows; mocking paths is not reliable under devtools::check()"
+  )
+  
   dp <- system.file("test-data/test.package.0001_0.1.0.tar.gz",
                     package = "risk.assessr")
 

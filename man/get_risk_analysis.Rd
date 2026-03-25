@@ -25,6 +25,23 @@ mock_data <- list(
   license = "MIT",
   reverse_dependencies_count = 10,
   documentation_score = 2,
+  has_examples = list(
+    data = data.frame(
+      function_name          = "somefunction",
+      documentation_name     = "No documentation found",
+      documentation_location = 0,
+      example                = "no Rd file",
+      stringsAsFactors       = FALSE
+    ),
+    example_score = 0.20   
+  ),
+  has_docs = list(
+    data = data.frame(
+      function_name    = "somefunction",
+      stringsAsFactors = FALSE
+    ),
+    has_docs_score = 0.30  
+  ),
   cmd_check = 0
 )
 

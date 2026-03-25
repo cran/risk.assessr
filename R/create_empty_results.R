@@ -31,6 +31,8 @@ results <- list(
   license = "",
   license_name = "",
   has_examples = "",
+  has_docs = "",
+  has_ex_docs_score = " ",
   has_maintainer = "",
   size_codebase = "",
   has_news = "",

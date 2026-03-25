@@ -7,7 +7,7 @@
 generate_traceability_matrix(
   package_name,
   version = NA,
-  repos = NULL,
+  repos = getOption("repos"),
   execute_coverage = FALSE
 )
 }
@@ -16,7 +16,7 @@ generate_traceability_matrix(
 
 \item{version}{A character string specifying the version of the package to assess. Default is `NA`, which assesses the latest version.}
 
-\item{repos}{A character string specifying the repo directly. Default is NULL, which uses the mirrors}
+\item{repos}{A character string specifying the repo directly. Default is getOption("repos")}
 
 \item{execute_coverage}{Logical (`TRUE`/`FALSE`). If `TRUE`, execute test coverage.}
 }
@@ -29,11 +29,6 @@ This function use `risk.assessr::create_traceability_matrix` function with only 
 }
 \examples{
 \dontrun{
-r <- getOption("repos")
-# save current repo options  
-old <- options(repos = r)
-r["CRAN"] = "http://cran.us.r-project.org"
-options(repos = r)#' 
 
 results_no_test_covr <- generate_traceability_matrix(
  "here", 
@@ -47,8 +42,6 @@ results_test_covr <- generate_traceability_matrix(
  execute_coverage = TRUE
 )
 
-# restore user's repo options
-options(old)
 
 print(results_no_test_covr)
 

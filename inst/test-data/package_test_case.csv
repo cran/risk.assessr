@@ -13,6 +13,8 @@ test.package.0011,test.package.0011_0.1.0.tar.gz,Package with R6 and other funct
 test.package.0012,test.package.0012_0.1.0.tar.gz,Package with nonstandard NAMESPACE
 test.package.0013,test.package.0013_0.1.0.tar.gz,Package with undocumented functions and datasets
 no_vignette.tar.gz , no_vignette.tar.gz, Package with no vignette
+test.package.0014,test.package.0014_0.1.0.tar.gz,Package with passing and failing tests
+no_vignette.tar.gz , no_vignette.tar.gz, Package with no vignette
 just_vignette_folder.tar.gz , just_vignette_folder.tar.gz, Package with "vignette" folder, but no vignette
 got_vignette.teeeeeeear , got_vignette.teeeeeeear.tar.gz, Package with wrong and non tar extension
 got_vignette.tar.gz , got_vignette.tar.gz, Package with vignette folder and vignette inside

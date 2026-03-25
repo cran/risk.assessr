@@ -99,6 +99,10 @@ here$results$host
 here$risk_analysis
 ```
 
+[More info Here](https://github.com/Sanofi-Public/risk.assessr/blob/gh-pages/articles/define_custom_risk_rules.html)
+
+
+
 
 ## Advanced feature
 
@@ -107,6 +111,9 @@ here$risk_analysis
 ```{r, eval=FALSE}
 here$tm_list
 ```
+
+[More info Here](https://github.com/Sanofi-Public/risk.assessr/blob/gh-pages/articles/Traceability_matrix.html)
+
 
 ## Suggested Imports Review
 

@@ -17,7 +17,7 @@ data.frame, with one column `exported_function`, that can be passed
 list all package exports
 }
 \examples{
-\donttest{
+\dontrun{
 tmpdir <- tempdir()
 
 # Locate the package source tarball bundled with risk.assessr

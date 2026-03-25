@@ -125,7 +125,6 @@ check_forbidden_notes <- function(res_check, pkg_name) {
   return(res_check)
 }
 
-
 #' Run covr and potentially save results to disk
 #'
 #' @param pkg_source_path package installation directory

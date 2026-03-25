@@ -27,12 +27,17 @@ generate_html_report <- function(assessment_results, output_dir = NULL) {
   # check input
   checkmate::assert_list(assessment_results, names = "named", any.missing = TRUE)
   checkmate::assert_list(assessment_results$results, names = "named", any.missing = TRUE)
-  
+ 
   # If output_dir is not set, use the current working directory
   if (is.null(output_dir)) {
     output_dir <- getwd()
     message(glue::glue("No output directory specified. Setting output to {output_dir}"))
   }
+  
+  # Create a file name with pkg_name,version, and "risk_assessment.html"
+  pkg_name <- assessment_results$results$pkg_name
+  pkg_version <- assessment_results$results$pkg_version
+  date_time <- assessment_results$results$date_time
   
   # Create the risk summary data
   risk_summary_output <- generate_risk_summary(assessment_results)
@@ -44,7 +49,7 @@ generate_html_report <- function(assessment_results, output_dir = NULL) {
   rcmd_check_output <- generate_rcmd_check_section(assessment_results)
   
   # Capture the output of generate_coverage_section
-  coverage_output <- generate_coverage_section(assessment_results)
+  coverage_output <- generate_coverage_section(assessment_results, pkg_name)
   
   # Capture the output of generate_doc_metrics_section
   doc_metrics_output <- generate_doc_metrics_section(assessment_results)
@@ -137,7 +142,7 @@ generate_html_report <- function(assessment_results, output_dir = NULL) {
   risk_rules <- get_risk_definition()
   code_covr_thresholds <- extract_thresholds_by_id(risk_rules, "code_coverage")
   code_covr_maxes <- get_max_thresholds(code_covr_thresholds)
-  
+ 
   cmd_check_thresholds <- extract_thresholds_by_id(risk_rules, "cmd-check")
   cmd_check_maxes <- get_max_thresholds(cmd_check_thresholds)
   
@@ -150,13 +155,13 @@ generate_html_report <- function(assessment_results, output_dir = NULL) {
   pop_thresholds <- extract_thresholds_by_key(risk_rules, "total_download")
   pop_maxes <- get_max_thresholds(pop_thresholds)
   
+  example_thresholds <- extract_thresholds_by_key(risk_rules, "has_ex_docs_score")
+  example_maxes <- get_max_thresholds(example_thresholds)
+  
+  func_doc_thresholds <- extract_thresholds_by_key(risk_rules, "has_ex_docs_score")
+  func_doc_maxes <- get_max_thresholds(func_doc_thresholds)
   license_thresholds <- extract_thresholds_by_id(risk_rules, "license")
   license_maxes <- get_license_thresholds(license_thresholds)
-  
-  # Create a file name with pkg_name,version, and "risk_assessment.html"
-  pkg_name <- assessment_results$results$pkg_name
-  pkg_version <- assessment_results$results$pkg_version
-  date_time <- assessment_results$results$date_time
   
   # set up report environment
   report_env <- new.env()
@@ -188,8 +193,9 @@ generate_html_report <- function(assessment_results, output_dir = NULL) {
   report_env$dep_maxes <- dep_maxes
   report_env$revdep_maxes <- revdep_maxes
   report_env$pop_maxes <- pop_maxes
+  report_env$example_maxes <- example_maxes
+  report_env$func_doc_maxes <- func_doc_maxes
   report_env$license_maxes <- license_maxes
-  
   
   if (dir_exists(output_dir)) {
     
@@ -204,6 +210,7 @@ generate_html_report <- function(assessment_results, output_dir = NULL) {
       package = "risk.assessr"
     )
     
+    
     # Render the R Markdown file to the output directory
     # CRAN-safe: skip rendering on CRAN, avoid viewer launch
     if (identical(Sys.getenv("NOT_CRAN"), "true") || interactive()) {
@@ -212,6 +219,8 @@ generate_html_report <- function(assessment_results, output_dir = NULL) {
         render(
           input = template_path,
           output_file = output_file,
+          output_options = list(css = system.file("report_templates/styles.css", 
+                                                              package = "risk.assessr")),
           envir = report_env,
           quiet = TRUE
         )
@@ -238,12 +247,17 @@ generate_html_report <- function(assessment_results, output_dir = NULL) {
 #'
 #' @keywords internal
 handle_null <- function(x) {
-  if (is.null(x)) {
+  if (is.null(x) || length(x) == 0) {
     return("N/A")
+  } else if (is.logical(x)) {
+    return(paste(as.character(x), collapse = ", "))
+  } else if (is.numeric(x)) {
+    return(paste(as.character(x), collapse = " "))
   } else {
     return(x)
   }
 }
+
 
 #' Convert number to abbreviation
 #'
@@ -274,11 +288,26 @@ convert_number_to_abbreviation <- function(value) {
 #'
 #' @keywords internal
 convert_number_to_percent <- function(value) {
+  
   result <- NA
   
-  if (!is.na(value) && is.numeric(value)) {
-    percent_value <- round(value * 100, 1)
+  if (!is.na(value)) {
+    # Try to coerce to numeric if it's a character
+    if (is.character(value)) {
+      value <- suppressWarnings(as.numeric(value))
+    }
+    
+    
+    # If value is between 0 and 1 (including .75), treat as proportion
+    if (value >= 0 && value <= 1) {
+      percent_value <- round(value * 100, 1)
+    } else {
+      # If value >1 (like 75), treat as already percent
+      percent_value <- round(value, 1)
+    }
+    
     result <- paste0(percent_value, "%")
+    
   }
   
   return(result)
@@ -292,10 +321,13 @@ convert_number_to_percent <- function(value) {
 safe_value <- function(x) {
   if (is.null(x)) {
     return(handle_null(x))
-  } else {
+  } else if (is.numeric(x)) {
     return(convert_number_to_abbreviation(x))
+  } else {
+    return(handle_null(x))
   }
 }
+
 
 #' Helper to create maintainer
 #'
@@ -304,8 +336,12 @@ safe_value <- function(x) {
 #' @keywords internal
 extract_maintainer_info <- function(person_obj) {
   # Access the first person in the list
-  
   p <- person_obj[[1]]
+  
+  # check for the length of given names and combine
+  if (length(p$given) > 1) {
+    p$given <- paste(p$given, collapse = " ")
+  }
   
   # Extract fields
   given <- p$given
@@ -482,7 +518,7 @@ generate_risk_details <- function(assessment_results) {
   covr <- handle_null(assessment_results$results$covr)
   
   covr <- convert_number_to_percent(covr)
-  
+
   risk_details_table <- data.frame(
     Metric = c(
       'R CMD Check Score', 'Test Coverage Score', 'Date Time', 'Executor', 
@@ -554,15 +590,22 @@ create_file_coverage_df <- function(file_names, file_coverage, errors, notes) {
 #' @description Generates the Coverage section for the HTML report.
 #' 
 #' @param assessment_results - input data
+#' @param pkg_name - name of the package
 #' 
 #' @keywords internal
-generate_coverage_section <- function(assessment_results) {
+generate_coverage_section <- function(assessment_results, pkg_name) {
   
   total_coverage <- assessment_results$covr_list$res_cov$coverage$totalcoverage
   file_coverage <- assessment_results$covr_list$res_cov$coverage$filecoverage
   
   # Extract file names from the attributes
   file_names <- attr(file_coverage, "dimnames")[[1]]
+  
+  
+  # Check if file_names contains full paths
+  if (any(grepl("^(/|[A-Za-z]:)", file_names))) {
+    file_names <- sub(glue::glue("^/tmp/.+?/{pkg_name}/"), "", file_names)
+  }
   
   # Handle errors and notes
   errors <- assessment_results$covr_list$res_cov$errors
@@ -581,13 +624,24 @@ generate_coverage_section <- function(assessment_results) {
     file_coverage_df <- create_file_coverage_df(file_names, file_coverage, errors, notes)
   } else {
     # Handle the case where errors does not have the expected structure
-    file_coverage_df <- data.frame(
-      Function = file_names,
-      Coverage = file_coverage,
-      Errors = errors,
-      Notes = notes,
-      stringsAsFactors = FALSE
-    )
+    
+    if (is.null(file_names) || is.null(file_coverage)) {
+      file_coverage_df <- data.frame(
+        Function = NA_character_,
+        Coverage = NA_real_,
+        Errors = NA,
+        Notes = NA,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      file_coverage_df <- data.frame(
+        Function = file_names,
+        Coverage = file_coverage,
+        Errors = errors,
+        Notes = notes,
+        stringsAsFactors = FALSE
+      )
+    }
   }
   
   return(file_coverage_df)
@@ -600,73 +654,123 @@ generate_coverage_section <- function(assessment_results) {
 #' @param assessment_results - input data
 #' 
 #' @keywords internal
+
 generate_doc_metrics_section <- function(assessment_results) {
   
+  # Helpers
+  `%||%` <- function(a, b) if (!is.null(a)) a else b
+  
+  # Map 0/1 flags to labels; leave non-flags untouched
+  map_flag <- function(x) {
+    if (is.null(x)) return(NA_character_)
+    if (length(x) == 1L && is.numeric(x) && !is.na(x)) {
+      if (x == 0) return("Not Included")
+      if (x == 1) return("Included")
+    }
+    as.character(x)
+  }
+  
+  # External helpers expected to exist in your codebase:
+  # - handle_null(): normalizes NULL/missing values
+  # - extract_maintainer_info(): extracts maintainer display string
   pkg_maintainer <- extract_maintainer_info(assessment_results$results$author$maintainer)
   
-  # Extract the relevant elements from assessment_results
-  doc_metrics <- data.frame(
-    Metric = c(
-      'Has Bug Reports URL', 'Has License', 'Has Examples', 'Has Maintainer',
-      'Has News', 'Has Source Control', 'Has Vignettes',
-      'Has Website', 'News Current', 'Export Help'
-    ),
-    Value = c(
-      handle_null(assessment_results$results$has_bug_reports_url),
-      handle_null(assessment_results$results$license),
-      handle_null(assessment_results$results$has_examples),
-      handle_null(pkg_maintainer),
-      handle_null(assessment_results$results$has_news),
-      handle_null(assessment_results$results$has_source_control),
-      handle_null(assessment_results$results$has_vignettes),
-      handle_null(assessment_results$results$has_website),
-      handle_null(assessment_results$results$news_current),
-      handle_null(assessment_results$results$export_help)
-    )
-  )  
+  # --- has_examples (returned as its own data.frame) ---
+  hex <- assessment_results$results$has_examples
   
-  doc_metrics$Value <- sapply(doc_metrics$Value, function(x) {
-    if (x == 0) {
-      return('Not Included')
-    } else if (x == 1) {
-      return('Included')
-    } else {
-      return(x)
-    }
-  })
+  if (is.list(hex) && !is.null(hex$data)) {
+    
+    has_examples_df <- as.data.frame(hex$data, stringsAsFactors = FALSE)
+    attr(has_examples_df, "score") <- `%||%`(hex$example_score, NA_real_)
+    
+  } else if (is.data.frame(hex)) {
+    
+    has_examples_df <- hex
+    attr(has_examples_df, "score") <- NA_real_
+    
+  } else {
+    
+    has_examples_df <- data.frame()
+    attr(has_examples_df, "score") <- NA_real_
+    
+  }
   
-  # Extract the relevant elements from assessment_results
-  doc_metrics <- data.frame(
-    Metric = c(
-      'Has Bug Reports URL', 'Has License', 'Has Examples', 'Has Maintainer',
-      'Has News', 'Has Source Control', 'Has Vignettes',
-      'Has Website', 'Export Help'
-    ),
-    Value = c(
-      handle_null(assessment_results$results$has_bug_reports_url),
-      handle_null(assessment_results$results$license),
-      handle_null(assessment_results$results$has_examples),
-      handle_null(pkg_maintainer),
-      handle_null(assessment_results$results$has_news),
-      handle_null(assessment_results$results$has_source_control),
-      handle_null(assessment_results$results$has_vignettes),
-      handle_null(assessment_results$results$has_website),
-      handle_null(assessment_results$results$export_help)
-    )
-  )  
   
-  doc_metrics$Value <- sapply(doc_metrics$Value, function(x) {
-    if (x == 0) {
-      return('Not Included')
-    } else if (x == 1) {
-      return('Included')
-    } else {
-      return(x)
-    }
-  })
+  if ("example" %in% names(has_examples_df)) {
+    # Preserve custom attribute
+    ex_score <- attr(has_examples_df, "score")
+    
+    # Build a safe logical index
+    ex_vals <- has_examples_df$example
+    # NOTE: We intentionally keep only rows where the function has *no* example.
+    # This allows the documentation metrics section to highlight functions missing examples.
+    keep <- !is.na(ex_vals) & tolower(trimws(ex_vals)) == "no example"
+    
+    # Subset while keeping column structure even when 0 rows remain
+    has_examples_df <- has_examples_df[keep, , drop = FALSE]
+    
+    # Restore attribute
+    attr(has_examples_df, "score") <- ex_score
+  }
   
-  return(doc_metrics)
+  
+  
+  # --- has_docs (returned as its own data.frame) ---
+  hdoc <- assessment_results$results$has_docs
+  if (is.list(hdoc) && !is.null(hdoc$data)) {
+    has_docs_df <- as.data.frame(hdoc$data, stringsAsFactors = FALSE)
+    attr(has_docs_df, "score") <- `%||%`(hdoc$has_docs_score, NA_real_)
+  } else if (is.data.frame(hdoc)) {
+    has_docs_df <- hdoc
+    attr(has_docs_df, "score") <- NA_real_
+  } else {
+    has_docs_df <- data.frame()
+    attr(has_docs_df, "score") <- NA_real_
+  }
+  
+  # --- Remaining documentation metrics (EXCLUDES 'Has Examples') ---
+  metric_names <- c(
+    'Has Bug Reports URL',
+    'Has License',
+    'Has Maintainer',
+    'Has News',
+    'Has Source Control',
+    'Has Vignettes',
+    'Has Website',
+    'News Current',
+    'Export Help'
+  )
+  
+  metric_values_raw <- list(
+    assessment_results$results$has_bug_reports_url,
+    assessment_results$results$license,
+    pkg_maintainer,
+    assessment_results$results$has_news,
+    assessment_results$results$has_source_control,
+    assessment_results$results$has_vignettes,
+    assessment_results$results$has_website,
+    assessment_results$results$news_current,
+    assessment_results$results$export_help
+  )
+  
+  processed_values <- lapply(metric_values_raw, handle_null)
+  labeled_values   <- vapply(processed_values, map_flag, FUN.VALUE = character(1))
+  
+  doc_metrics_df <- data.frame(
+    Metric = metric_names,
+    Value  = unname(labeled_values),
+    stringsAsFactors = FALSE
+  )
+  
+  # Return all three sections
+  docs_list <-list(
+    has_examples = has_examples_df,
+    has_docs     = has_docs_df,
+    doc_metrics  = doc_metrics_df
+  )
+  return(docs_list)
 }
+
 
 #' Generate Popularity Metrics Section
 #'
@@ -678,7 +782,7 @@ generate_doc_metrics_section <- function(assessment_results) {
 generate_pop_metrics_section <- function(assessment_results) {
   
   # Extract the numeric value
-  total_download_n <- assessment_results$results$download$total_download
+  total_download_n <- safe_value(assessment_results$results$download$total_download)
   
   # Extract the relevant elements from assessment_results
   pop_metrics <- data.frame(
@@ -698,11 +802,18 @@ generate_pop_metrics_section <- function(assessment_results) {
       safe_value(assessment_results$results$download$last_month_download)
     )
   )  
-  
+ 
   # Add numeric value as a new column 
   # needed for formatting in pop_metrics r chunk in `risk_report_template.Rmd`
   pop_metrics$NumericValue <- NA_real_
-  pop_metrics$NumericValue[pop_metrics$Metric == "Downloads Total"] <- total_download_n
+  
+  # check total_download_n
+  if (is.character(total_download_n) && total_download_n == "N/A") {
+    pop_metrics$NumericValue[pop_metrics$Metric == "Downloads Total"] <- NA_real_
+  } else {
+    pop_metrics$NumericValue[pop_metrics$Metric == "Downloads Total"] <- total_download_n
+  }
+  
   
   return(pop_metrics)
 }
@@ -741,9 +852,8 @@ generate_trace_matrix_section <- function(total_coverage, file_coverage, tm_df) 
         Test_Coverage = coverage_percent
       )
     
-    # remove re-exported functions and sort by Test Coverage
+    # sort by Test Coverage
     trace_matrix <- trace_matrix |> 
-      dplyr::filter(!is.na(`Code_script`) & `Code_script` != "") |> 
       dplyr::arrange(Test_Coverage)
     
   }
@@ -762,8 +872,7 @@ generate_trace_matrix_section <- function(total_coverage, file_coverage, tm_df) 
 generate_fg_trace_matrix_section <- function(tm_type, tm_df) {
   
   # Check if coverage is missing
-  if (!"coverage_percent" %in% names(tm_df) || 
-      all(is.na(tm_df$coverage_percent))) {
+  if (!"coverage_percent" %in% names(tm_df)) {
     trace_matrix <- data.frame(
       Exported_function = " ",
       Function_type = " ",
@@ -783,7 +892,6 @@ generate_fg_trace_matrix_section <- function(tm_type, tm_df) {
         Description = description,
         Test_Coverage = coverage_percent
       ) %>%
-      dplyr::filter(!is.na(Code_script) & Code_script != "") %>%
       dplyr::arrange(Test_Coverage)
   }
   

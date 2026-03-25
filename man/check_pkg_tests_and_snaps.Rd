@@ -13,6 +13,7 @@ check_pkg_tests_and_snaps(pkg_source_path)
 A list with:
   - `has_testthat`: Does tests/testthat exist?
   - `has_testit`: Does tests/testit exist?
+  - `has_tests_base`: Do tests exist in tests subdirectory?
   - `has_snaps`: Does _snaps exist inside tests/testthat?
   - `n_golden_tests`: Number of snapshot files inside _snaps
   - `n_test_files`: Number of test-*.R files inside tests/testthat

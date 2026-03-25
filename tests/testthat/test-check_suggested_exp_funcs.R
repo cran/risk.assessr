@@ -112,7 +112,7 @@ test_that("check_suggested_exp_funcs returns matches messages for S3 functions",
   # Defer cleanup of unpacked source directory
   withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
                envir = parent.frame())
-  
+
   # set up package
   install_list <- risk.assessr::set_up_pkg(dp)
 
@@ -506,4 +506,36 @@ test_that("check_suggested_exp_funcs handles empty suggested_deps", {
   expect_equal(result$message, "No Imports or Suggested packages in the DESCRIPTION file")
   expect_true(is.na(result$suggested_function))
   expect_true(is.na(result$targeted_package))
+})
+
+
+test_that("check_suggested_exp_funcs handles empty exported functions from source package", {
+  # Mock inputs
+  pkg_name <- "mockpkg"
+  pkg_source_path <- "mock/path"
+  suggested_deps <- data.frame(package = "dplyr", stringsAsFactors = FALSE)
+  
+  # Stub functions to simulate conditions
+  mockery::stub(check_suggested_exp_funcs, "contains_r_folder", function(...) TRUE)
+  
+  # Simulate get_exports returning a data frame with only NA or blank values
+  mockery::stub(check_suggested_exp_funcs, "get_exports", function(...) {
+    data.frame(exported_function = c(NA, " "), function_body = c(NA, " "), stringsAsFactors = FALSE)
+  })
+  
+  # Simulate get_suggested_exp_funcs returning a valid data frame
+  mockery::stub(check_suggested_exp_funcs, "get_suggested_exp_funcs", function(...) {
+    data.frame(suggested_function = c("filter"), targeted_package = c("dplyr"), stringsAsFactors = FALSE)
+  })
+  
+  # Run the function
+  result <- check_suggested_exp_funcs(pkg_name, pkg_source_path, suggested_deps)
+  
+  # Check the result
+  expect_true(is.data.frame(result))
+  expect_equal(nrow(result), 1)
+  expect_equal(result$source, pkg_name)
+  expect_true(is.na(result$suggested_function))
+  expect_true(is.na(result$targeted_package))
+  expect_match(result$message, "No exported functions from source package")
 })

@@ -4,10 +4,12 @@
 \alias{generate_coverage_section}
 \title{Generate Coverage Section}
 \usage{
-generate_coverage_section(assessment_results)
+generate_coverage_section(assessment_results, pkg_name)
 }
 \arguments{
 \item{assessment_results}{- input data}
+
+\item{pkg_name}{- name of the package}
 }
 \description{
 Generates the Coverage section for the HTML report.

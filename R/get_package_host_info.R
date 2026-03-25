@@ -18,12 +18,8 @@
 #' dates (e.g., `"01/02/2024"`) depend on your R locale/format unless you
 #' specify a format before calling this function.
 #'
-#' @examples
-#' as_iso_date(Sys.Date())
-#' as_iso_date(NULL)              
-#' as_iso_date("not-a-date")
 #'
-#' @export
+#' @keywords internal
 as_iso_date <- function(x) {
   
   if (is.null(x)) return(NULL)
@@ -38,7 +34,7 @@ as_iso_date <- function(x) {
 
 #' Get Internal Package URL
 #'
-#' This function retrieves the URL of an internal package on Mirror, its latest version, 
+#' This function retrieves the URL of an internal package on Sanofi Mirror, its latest version, 
 #' and a list of all available versions.
 #'
 #' @param package_name A character string specifying the name of the package.
@@ -652,3 +648,107 @@ get_host_package <- function(pkg_name, pkg_version, pkg_source_path) {
   
   return(result)
 }
+
+
+#' Download R Package Source Tarball
+#'
+#' @description
+#' Downloads the source tarball (.tar.gz) for a specified R package from CRAN, 
+#' Bioconductor, or an internal repository fallback.
+#'
+#' @param package_name Character string specifying the name of the package to download.
+#' @param version Optional character string specifying the version of the package.
+#'        If NULL (default), the latest available version will be downloaded.
+#' @param repos Optional character vector of repository URLs to use.
+#'        If NULL (default), the current repositories set in options() will be used.
+#'
+#' @return Character string with the path to the downloaded tarball file, or NULL if
+#'         the download was unsuccessful.
+#'
+#'
+#' @examples
+#' \dontrun{
+#' # Download the latest version of dplyr
+#' tarball_path <- get_package_tarfile("dplyr")
+#'
+#' # Download a specific version
+#' tarball_path <- get_package_tarfile("dplyr", version = "1.0.0")
+#'
+#' # Use a specific repository
+#' tarball_path <- get_package_tarfile("dplyr", repos = "https://cloud.r-project.org")
+#' }
+#'
+#' @export
+get_package_tarfile <- function(package_name, version = NULL, repos = getOption("repos")) {
+  
+  download_successful <- FALSE
+  message(paste("Checking", package_name, "on CRAN..."))
+  
+  temp_file <- NULL
+  
+  # Try CRAN first
+  if (check_cran_package(package_name)) {
+    temp_file <- tempfile(fileext = ".tar.gz")
+    
+    tryCatch({
+      result_cran <- check_and_fetch_cran_package(package_name = package_name, package_version = version)
+      download.file(url = result_cran$package_url, destfile = temp_file, mode = "wb")
+      download_successful <- TRUE
+    }, error = function(e) {
+      message(paste("CRAN download failed:", e$message))
+    })
+  }
+  
+  # If not successful on CRAN, try Bioconductor
+  if (!download_successful) {
+    message(paste("Checking", package_name, "on Bioconductor..."))
+    
+    html_content <- fetch_bioconductor_releases()
+    release_data <- parse_bioconductor_releases(html_content)
+    result_bio <- get_bioconductor_package_url(package_name, version, release_data)
+    
+    if (!is.null(result_bio$url)) {
+      temp_file <- tempfile(fileext = ".tar.gz")
+      tryCatch({
+        download.file(url = result_bio$url, destfile = temp_file, mode = "wb")
+        download_successful <- TRUE
+      }, error = function(e) {
+        message(paste("Bioconductor download failed:", e$message))
+      })
+    } else {
+      message(paste("No", package_name, "package found on Bioconductor"))
+    }
+  }
+  
+  # Final fallback: internal mirror
+  if (!download_successful) {
+    message(paste("Attempting internal fallback download for", package_name))
+    package_info <- get_internal_package_url(package_name, package_version)
+    
+    tryCatch({
+      if (!is.null(package_info$url)) {
+        temp_file <- tempfile(fileext = ".tar.gz")
+        download.file(package_info$url, temp_file, mode = "wb", quiet = TRUE)
+        download_successful <- TRUE
+      } else {
+        stop("Failed to find the package URL from the internal repository.")
+      }
+    }, error = function(e) {
+      stop(
+        paste("Failed to download the package from the internal repository:", e$message),
+        call. = FALSE
+      )
+    })
+  }
+  
+  if (download_successful && !is.null(temp_file)) {
+    message(paste("Package tarball saved at:", temp_file))
+    return(temp_file)
+  } else {
+    stop("Failed to obtain package tarball.")
+  }
+}
+
+
+
+

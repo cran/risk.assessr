@@ -1,43 +1,396 @@
-#' Assess Rd files for example or examples
+#' Assess Rd files for examples (exported functions only)
 #'
-#' @param pkg_name - name of the package 
-#' @param pkg_source_path - source path for install local
+#' Scans the package Rd database at `pkg_source_path` and reports whether each
+#' **exported function** has examples. Resolution supports shared topics via
+#' roxygen `@rdname` (multiple functions documented on the same Rd page) and
+#' multiple `\\alias{}` entries.
 #'
-#' @return has_examples - variable with score
+#' @param pkg_name Character scalar; package name (must be loadable so exports can be read).
+#' @param pkg_source_path Directory path where Rd files can be found by `tools::Rd_db()`.
+#'
+#' @return A list with:
+#' \describe{
+#'   \item{data}{A data.frame with columns `function_name`, `documentation_name`,
+#'               `documentation_location`, and `example`.}
+#'   \item{example_score}{Numeric; percentage of exported functions with examples.}
+#' }
+#' @examples
+#' \dontrun{
+#'   res <- assess_examples("stringr", "<path-to-stringr-source>")
+#'   head(res$data)
+#'   res$example_score
+#' }
 #' @keywords internal
 assess_examples <- function(pkg_name, pkg_source_path) {
-  
-  # get all information on Rd objects
+  # Load Rd database for the source path
   db <- tools::Rd_db(dir = pkg_source_path)
   
-  # omit whole package rd
-  db <- db[!names(db) %in% c(paste0(pkg_name, "-package.Rd"), paste0(pkg_name,".Rd"))]
+  # Remove only the package-level Rd file (pkgname-package.Rd)
+  db <- db[!names(db) %in% paste0(pkg_name, "-package.Rd")]
   
-  extract_section <- function(rd, section) {
-    lines <- unlist(strsplit(as.character(rd), "\n"))
-    start <- grep(paste0("^\\\\", section), lines)
-    if (length(start) == 0) return(NULL)
-    end <- grep("^\\\\", lines[-(1:start)], fixed = TRUE)
-    end <- if (length(end) == 0) length(lines) else start + end[1] - 2
-    paste(lines[(start + 1):end], collapse = "\n")
+  # Namespace and exported objects
+  ns <- asNamespace(pkg_name)
+  exported <- getNamespaceExports(ns)
+  
+  # Keep only exported functions
+  is_fun <- function(name) {
+    obj <- try(getExportedValue(ns, name), silent = TRUE)
+    is.function(obj)
   }
-  # check Rd objects for example examples usage
-  examples <- lapply(db, extract_section, section = "examples")
-  example <- lapply(db, extract_section, section = "example")
+  exported_funs <- Filter(is_fun, exported)
   
-  # filter out NULL values
-  examples <- Filter(Negate(is.null), examples)
-  example <- Filter(Negate(is.null), example)
-  
-  if (length(examples) > 0 | length(example) > 0) {
-    message(glue::glue("{pkg_name} has examples"))
-    has_examples <- 1
-  } else {
-    message(glue::glue("{pkg_name} has no examples"))
-    has_examples <- 0
+  if (length(exported_funs) == 0) {
+    df <- data.frame(
+      function_name = character(0),
+      documentation_name = character(0),
+      documentation_location = character(0),
+      example = character(0),
+      stringsAsFactors = FALSE
+    )
+    example_score <- 0
+    message(sprintf("%s: no exported functions found; example score = %.2f%%",
+                    pkg_name, example_score))
+    return(list(data = df, example_score = example_score))
   }
- return(has_examples)
+  
+  # Build Rd index once for performance and correctness
+  idx <- build_rd_index(db)
+  
+  rows <- lapply(exported_funs, function(fun) {
+    hit <- find_rd_for_fun(fun, db, idx)  # returns list(rd, filename) or NULL
+    if (is.null(hit)) {
+      return(data.frame(
+        function_name = fun,
+        documentation_name = "No documentation found",
+        documentation_location = NA_character_,
+        example = "no Rd file",
+        stringsAsFactors = FALSE
+      ))
+    }
+    
+    ex_txt <- extract_examples_text(hit$rd)
+    data.frame(
+      function_name = fun,
+      documentation_name = rd_name(hit$rd),
+      documentation_location = file.path("man", hit$filename),
+      example = if (is.null(ex_txt)) "no example" else ex_txt,
+      stringsAsFactors = FALSE
+    )
+  })
+  
+  df <- do.call(rbind, rows)
+  
+  # Example score: % of exported functions that have examples
+  has_example <- df$example != "no example" & df$example != "no Rd file"
+  total <- nrow(df)
+  example_score <- if (total > 0) round(sum(has_example) / total, 2) else 0
+  
+  
+  
+  message(sprintf("%s: %.2f%% of exported functions have examples", 
+                  pkg_name, 
+                  example_score * 100))
+  return(list(data = df, 
+              example_score = example_score))
 }
+
+
+#' Get all Rd sections by tag
+#'
+#' Recursively collects all nodes whose `Rd_tag` matches a given section
+#' name, e.g., "alias", "examples", "example", "name".
+#'
+#' @param rd An Rd object (a nested list with "Rd_tag" attributes on nodes).
+#' @param section Section name without leading backslash (e.g., "alias", "examples").
+#' @return A list of Rd nodes matching the section (possibly empty).
+#' @keywords internal
+get_rd_sections <- function(rd, section) {
+  target <- paste0("\\", section)
+  out <- list()
+  dfs <- function(node) {
+    tag <- attr(node, "Rd_tag")
+    if (!is.null(tag) && identical(tag, target)) {
+      out[[length(out) + 1L]] <<- node
+    }
+    if (is.list(node)) {
+      for (child in node) dfs(child)
+    }
+    NULL
+  }
+  dfs(rd)
+  out
+}
+
+#' Get the first Rd section by tag
+#'
+#' Depth-first search returning the first node whose `Rd_tag` equals
+#' `paste0("\\\\", section)`.
+#'
+#' @inheritParams get_rd_sections
+#' @return The first matching Rd node or `NULL` if not found.
+#' @keywords internal
+get_rd_section <- function(rd, section) {
+  target <- paste0("\\", section)
+  dfs <- function(node) {
+    tag <- attr(node, "Rd_tag")
+    if (!is.null(tag) && identical(tag, target)) {
+      return(node)
+    }
+    if (is.list(node)) {
+      for (child in node) {
+        found <- dfs(child)
+        if (!is.null(found)) return(found)
+      }
+    }
+    NULL
+  }
+  dfs(rd)
+}
+
+#' Flatten an Rd node to plain text
+#'
+#' Recursively flattens a node (or list of nodes) into a character string.
+#'
+#' @param node An Rd node or list of nodes.
+#' @return Character scalar containing the concatenated text.
+#' @keywords internal
+rd_flatten_text <- function(node) {
+  if (is.list(node)) {
+    paste(vapply(node, rd_flatten_text, "", USE.NAMES = FALSE), collapse = "")
+  } else {
+    as.character(node)
+  }
+}
+
+#' Extract all aliases from an Rd document
+#'
+#' Collects text from **all** `\\alias{}` nodes, trimming whitespace and
+#' de-duplicating.
+#'
+#' @param rd An Rd object.
+#' @return A character vector of aliases (possibly empty).
+#' @keywords internal
+rd_aliases <- function(rd) {
+  alias_nodes <- get_rd_sections(rd, "alias")
+  if (length(alias_nodes) == 0) return(character(0))
+  vals <- trimws(vapply(alias_nodes, rd_flatten_text, "", USE.NAMES = FALSE))
+  unique(vals[nzchar(vals)])
+}
+
+#' Extract the topic name from an Rd document
+#'
+#' Returns the `\\name{}` (roxygen `@rdname`) of the Rd document.
+#'
+#' @param rd An Rd object.
+#' @return A length-1 character scalar (topic name) or `NA_character_` if missing.
+#' @keywords internal
+rd_name <- function(rd) {
+  nm_node <- get_rd_section(rd, "name")
+  if (is.null(nm_node)) return(NA_character_)
+  trimws(rd_flatten_text(nm_node))
+}
+
+#' Build a fast lookup index for an Rd database
+#'
+#' Provides (1) an alias index, mapping `alias -> filename`, and
+#' (2) a topic index, mapping `filename -> \\name` (topic).
+#'
+#' @param db An Rd database list as returned by `tools::Rd_db()`.
+#' @return A list with elements `alias_index` (environment) and `topic_by_file` (named character vector).
+#' @keywords internal
+build_rd_index <- function(db) {
+  alias_index <- new.env(parent = emptyenv())
+  topic_by_file <- setNames(
+    vapply(names(db), function(nm) rd_name(db[[nm]]), "", USE.NAMES = FALSE),
+    names(db)
+  )
+  for (nm in names(db)) {
+    als <- rd_aliases(db[[nm]])
+    for (a in als) {
+      if (nzchar(a) && is.null(alias_index[[a]])) {
+        alias_index[[a]] <- nm
+      }
+    }
+  }
+  list(alias_index = alias_index, topic_by_file = topic_by_file)
+}
+
+#' Find an Rd document for a function using an index
+#'
+#' Tries `fun.Rd`, then alias-based resolution via the index, and as a last
+#' resort matches the topic name if it equals the function name.
+#'
+#' @param fun Function name (character scalar).
+#' @param db An Rd database list as returned by `tools::Rd_db()`.
+#' @param idx Optional index from `build_rd_index()`. If `NULL`, it is built on demand.
+#' @return `NULL` if not found, otherwise a list with `rd` (the Rd object) and `filename` (the Rd filename).
+#' @keywords internal
+find_rd_for_fun <- function(fun, db, idx = NULL) {
+  if (is.null(idx)) idx <- build_rd_index(db)
+  # 1) conventional filename
+  direct <- paste0(fun, ".Rd")
+  if (!is.null(db[[direct]])) {
+    return(list(rd = db[[direct]], filename = direct))
+  }
+  # 2) alias-based via index
+  nm <- idx$alias_index[[fun]]
+  if (!is.null(nm)) {
+    return(list(rd = db[[nm]], filename = nm))
+  }
+  # 3) topic name equals function name (rare fallback)
+  topic_match <- names(idx$topic_by_file)[idx$topic_by_file == fun]
+  if (length(topic_match) > 0) {
+    nm <- topic_match[[1]]
+    return(list(rd = db[[nm]], filename = nm))
+  }
+  NULL
+}
+
+
+#' Flatten example nodes to a text block
+#'
+#' Recursively collects example text from nodes that carry R code or text,
+#' unwrapping containers such as `\\dontrun{}`, `\\donttest{}`, and `\\dontshow{}`.
+#'
+#' @param node An Rd node.
+#' @return Character scalar containing example text or `""` if none.
+#' @keywords internal
+rd_examples_to_text <- function(node) {
+  tag <- attr(node, "Rd_tag")
+  if (is.list(node)) {
+    paste(vapply(node, rd_examples_to_text, "", USE.NAMES = FALSE), collapse = "")
+  } else {
+    # Keep code + text comments in examples. If you only want code, drop "TEXT".
+    if (!is.null(tag) && tag %in% c("RCODE", "VERB", "TEXT")) {
+      as.character(node)
+    } else {
+      ""
+    }
+  }
+}
+
+#' Extract examples text from an Rd document
+#'
+#' Supports both `\\examples{}` and `\\example{}` sections. If multiple
+#' sections exist, their contents are concatenated with blank lines.
+#'
+#' @param rd_doc An Rd document.
+#' @return Character scalar of combined examples text, or `NULL` if none/non‑informative.
+#' @keywords internal
+extract_examples_text <- function(rd_doc) {
+  nodes <- c(get_rd_sections(rd_doc, "examples"),
+             get_rd_sections(rd_doc, "example"))
+  if (length(nodes) == 0) return(NULL)
+  chunks <- vapply(nodes, rd_examples_to_text, "", USE.NAMES = FALSE)
+  txt <- paste(chunks[nzchar(chunks)], collapse = "\n\n")
+  # Trim outer whitespace
+  txt <- gsub("^[ \t\r\n]+|[ \t\r\n]+$", "", txt)
+  if (nzchar(txt)) txt else NULL
+}
+
+
+#' Assess documentation coverage for exported functions
+#'
+#' Resolves each **exported function** in a package to its Rd page and reports:
+#' the function name, the Rd topic name (roxygen `@rdname`), and the Rd location.
+#' Resolution uses the same alias/topic index as `assess_examples()`, so it
+#' correctly handles functions documented under a shared topic (via `@rdname`)
+#' and multiple `\\alias{}` entries (e.g., `stringr::str_to_upper` under
+#' `man/case.Rd`).
+#'
+#' @param pkg_name Character scalar; package name (must be loadable so exports can be read).
+#' @param pkg_source_path Directory path where Rd files can be found by `tools::Rd_db()`.
+#'
+#' @return A list with:
+#' \describe{
+#'   \item{data}{A `data.frame` with columns:
+#'     \describe{
+#'       \item{function_name}{Exported function name.}
+#'       \item{documentation_name}{The Rd topic name (`\\name{}`), or `"No documentation found"`.}
+#'       \item{documentation_location}{`man/<file>.Rd` if found, otherwise `NA_character_`.}
+#'     }
+#'   }
+#'   \item{documentation_score}{Numeric; percentage of exported functions with an Rd page.}
+#' }
+#'
+#' @keywords internal
+assess_exported_functions_docs <- function(pkg_name, pkg_source_path) {
+  
+  # Load Rd database for the source path
+  db <- tools::Rd_db(dir = pkg_source_path)
+  
+  # Remove only the package-level Rd file (pkgname-package.Rd).
+  # Keep files like "<pkg_name>.Rd" as they may document a function with the same name.
+  db <- db[!names(db) %in% paste0(pkg_name, "-package.Rd")]
+  
+  # Namespace and exported objects
+  ns <- asNamespace(pkg_name)
+  exported <- getNamespaceExports(ns)
+  
+  # Keep only exported functions
+  is_fun <- function(name) {
+    obj <- try(getExportedValue(ns, name), silent = TRUE)
+    is.function(obj)
+  }
+  exported_funs <- Filter(is_fun, exported)
+  
+  # --- Handle packages with NO exported functions ---------------------------
+  if (length(exported_funs) == 0) {
+    df <- data.frame(
+      function_name = character(0),
+      documentation_name = character(0),
+      documentation_location = character(0),
+      stringsAsFactors = FALSE
+    )
+    doc_score <- 0
+    message(sprintf("%s: no exported functions found; documentation score = %.2f%%",
+                    pkg_name, doc_score))
+    return(list(data = df, has_docs_score = doc_score))
+  }
+  
+  # Build Rd index once (reuses helpers from assess_examples)
+  idx <- build_rd_index(db)
+  
+  # Resolve each exported function to its Rd page
+  rows <- lapply(exported_funs, function(fun) {
+    
+    hit <- find_rd_for_fun(fun, db, idx)  # -> list(rd, filename) or NULL
+    if (is.null(hit)) {
+      return(data.frame(
+        function_name = fun,
+        documentation_name = "No documentation found",
+        documentation_location = NA_character_,
+        stringsAsFactors = FALSE
+      ))
+    }
+    
+    topic <- rd_name(hit$rd)
+    if (is.na(topic) || !nzchar(topic)) topic <- fun
+    
+    data.frame(
+      function_name = fun,
+      documentation_name = topic,
+      documentation_location = file.path("man", hit$filename),
+      stringsAsFactors = FALSE
+    )
+  })
+  
+  df <- do.call(rbind, rows)
+  
+  # Documentation score: % of exported functions that have any Rd doc
+  has_doc <- !is.na(df$documentation_location) &
+    df$documentation_name != "No documentation found"
+  total <- nrow(df)
+  doc_score <- if (total > 0) round(sum(has_doc) / total, 2) else 0
+  
+  message(sprintf("%s: %.2f%% of exported functions have documentation", 
+                  pkg_name, 
+                  doc_score * 100))
+  
+  return(list(data = df, 
+              has_docs_score = doc_score))
+  
+}  
 
 #' Assess exported functions to namespace
 #'
@@ -64,23 +417,50 @@ assess_export_help <- function(pkg_name, pkg_source_path) {
   
   exported_functions <- getNamespaceExports(pkg_name)
   if (length(exported_functions) > 0) {
-    db <- tools::Rd_db(pkg_name, pkg_source_path)
-    missing_docs <- setdiff(exported_functions, gsub("\\.Rd$", "", names(db)))
+    
+    # Use get_func_descriptions to retrieve documentation
+    func_descriptions <- get_func_descriptions(pkg_name)
+    
+    documented_names <- names(func_descriptions)
+    missing_docs <- setdiff(exported_functions, documented_names)
+    
     if (length(missing_docs) == 0) {
       message(glue::glue("All exported functions have corresponding help files in {pkg_name}"))
       export_help <- 1
     } else {
       message(glue::glue("Some exported functions are missing help files in {pkg_name}"))
       # message(glue::glue("The following exported functions are missing help files in {pkg_name}"))
-      # print(missing_docs) comment out - reactivate if needed
+      # print(missing_docs) # Uncomment if needed
       export_help <- 0
     }
   } else {
     message(glue::glue("No exported functions in {pkg_name}"))
     export_help <- 0
   }
+  
   return(export_help)
 }
+
+
+#' Combine example/docs scores into a single metric (sum).
+#'
+#' @param example_score Numeric (scalar or vector) in [0, 1] or NA.
+#' @param has_docs_score Numeric (scalar or vector) in [0, 1] or NA.
+#' @return Numeric vector: example_score + has_docs_score in [0, 2],
+#'   with NA where both inputs are NA at that position.
+#' @keywords internal
+create_has_ex_docs_score <- function(example_score, has_docs_score) {
+  
+  vals <- c(example_score, has_docs_score)
+  if (all(is.na(vals))) {
+    has_ex_docs_score <- NA_real_
+  } else {
+    has_ex_docs_score <- mean(vals, na.rm = TRUE)  
+  }
+  
+  return(has_ex_docs_score)
+}
+
 
 #' assess_description_file_elements
 #'
@@ -92,11 +472,11 @@ assess_export_help <- function(pkg_name, pkg_source_path) {
 assess_description_file_elements <- function(pkg_name, pkg_source_path) {
   
   desc_elements <- get_pkg_desc(pkg_source_path, fields = c(
-                                                            "Package", 
-                                                            "BugReports",
-                                                            "Maintainer",
-                                                            "URL"
-                                                            ))
+    "Package", 
+    "BugReports",
+    "Maintainer",
+    "URL"
+  ))
   
   if (is.null(desc_elements$BugReports) | (is.na(desc_elements$BugReports))) {
     message(glue::glue("{pkg_name} does not have bug reports URL"))
@@ -107,7 +487,7 @@ assess_description_file_elements <- function(pkg_name, pkg_source_path) {
   }
   
   has_maintainer <- desc::desc_get_author(role = "cre",
-                                       file = pkg_source_path)
+                                          file = pkg_source_path)
   if (length(has_maintainer) == 0) {
     has_maintainer <-  NULL
     message(glue::glue("{pkg_name} does not have a maintainer"))
@@ -152,7 +532,7 @@ assess_description_file_elements <- function(pkg_name, pkg_source_path) {
     has_website = has_website,
     has_source_control = has_source_control
   )
-
+  
   return(desc_elements_scores)
 }
 
@@ -229,37 +609,37 @@ assess_news_current <- function(pkg_name, pkg_ver, pkg_source_path) {
 #' @keywords internal
 assess_size_codebase <- function(pkg_source_path) {
   
-    # create character vector of function files
-    files <- list.files(path = file.path(pkg_source_path, "R"), full.names = T)
+  # create character vector of function files
+  files <- list.files(path = file.path(pkg_source_path, "R"), full.names = T)
+  
+  # define the function for counting code base
+  count_lines <- function(x){
+    # read the lines of code into a character vector
+    code_base <- readLines(x)
     
-    # define the function for counting code base
-    count_lines <- function(x){
-      # read the lines of code into a character vector
-      code_base <- readLines(x)
-      
-      # count all the lines
-      n_tot <- length(code_base)
-      
-      # count lines for roxygen headers starting with #
-      n_head <- length(grep("^#+", code_base))
-      
-      # count the comment lines with leading spaces
-      n_comment <- length(grep("^\\s+#+", code_base))
-      
-      # count the line breaks or only white space lines
-      n_break <- length(grep("^\\s*$", code_base))
-      
-      # compute the line of code base
-      n_tot - (n_head + n_comment + n_break)
-    }
+    # count all the lines
+    n_tot <- length(code_base)
     
-    # count number of lines for all functions
-    nloc <- sapply(files, count_lines)
+    # count lines for roxygen headers starting with #
+    n_head <- length(grep("^#+", code_base))
     
-    # sum the number of lines
-    size_codebase <- sum(nloc)
-      
-    return(size_codebase)
+    # count the comment lines with leading spaces
+    n_comment <- length(grep("^\\s+#+", code_base))
+    
+    # count the line breaks or only white space lines
+    n_break <- length(grep("^\\s*$", code_base))
+    
+    # compute the line of code base
+    n_tot - (n_head + n_comment + n_break)
+  }
+  
+  # count number of lines for all functions
+  nloc <- sapply(files, count_lines)
+  
+  # sum the number of lines
+  size_codebase <- sum(nloc)
+  
+  return(size_codebase)
 }
 
 #' Assess vignettes
@@ -311,6 +691,9 @@ doc_riskmetric <- function(pkg_name, pkg_ver, pkg_source_path) {
   }
   has_vignettes <- assess_vignettes(pkg_name, pkg_source_path)
   has_examples <- assess_examples(pkg_name, pkg_source_path)
+  has_docs <- assess_exported_functions_docs(pkg_name, pkg_source_path)
+  has_ex_docs_score <- create_has_ex_docs_score(has_examples$example_score, 
+                                                has_docs$has_docs_score)
   has_news <- assess_news(pkg_name, pkg_source_path)
   news_current <- assess_news_current(pkg_name, pkg_ver, pkg_source_path)
   
@@ -323,6 +706,8 @@ doc_riskmetric <- function(pkg_name, pkg_ver, pkg_source_path) {
     size_codebase = size_codebase,
     has_vignettes = has_vignettes,
     has_examples = has_examples,
+    has_docs = has_docs,
+    has_ex_docs_score = has_ex_docs_score, 
     has_news = has_news,
     news_current = news_current
   )
@@ -355,55 +740,31 @@ get_pkg_author <- function(pkg_name, pkg_source_path) {
     }
   }
   
-    # check for package creator
-    pkg_creator <- desc::desc_get_author(role = "cre",
-                                         file = pkg_desc_path)
-    
-    if (length(pkg_creator) == 0) pkg_creator <-  NULL
-
-    # check for package funder
-    pkg_fnd <- desc::desc_get_author(role = "fnd",
-                                     file = pkg_desc_path)
-    if (length(pkg_fnd) == 0) pkg_fnd <- NULL
-
-    # check for package authors
-    pkg_author <- desc::desc_get_authors(file = pkg_desc_path)
-    if (length(pkg_author) == 0) pkg_author <- NULL
-
-    # Combine all elements into a list for return
-    result <- list(
-      maintainer = pkg_creator,
-      funder = pkg_fnd,
-      authors = pkg_author
-    )
-
-    return(result)
+  # check for package creator
+  pkg_creator <- desc::desc_get_author(role = "cre",
+                                       file = pkg_desc_path)
+  
+  if (length(pkg_creator) == 0) pkg_creator <-  NULL
+  
+  # check for package funder
+  pkg_fnd <- desc::desc_get_author(role = "fnd",
+                                   file = pkg_desc_path)
+  if (length(pkg_fnd) == 0) pkg_fnd <- NULL
+  
+  # check for package authors
+  pkg_author <- desc::desc_get_authors(file = pkg_desc_path)
+  if (length(pkg_author) == 0) pkg_author <- NULL
+  
+  # Combine all elements into a list for return
+  result <- list(
+    maintainer = pkg_creator,
+    funder = pkg_fnd,
+    authors = pkg_author
+  )
+  
+  return(result)
 }
 
-#' Assess License
-#'
-#' @param pkg_name - name of the package 
-#' @param pkg_source_path - source path for install local 
-#' 
-#' @return - Authors related variable
-#' @importFrom desc description 
-#' @keywords internal
-get_pkg_license <- function(pkg_name, pkg_source_path) {
-  message(glue::glue("Checking for License in {pkg_name}"))
-  
-  # Path to the DESCRIPTION file
-  pkg_desc_path <- file.path(pkg_source_path, "DESCRIPTION")
-  # Load the DESCRIPTION file
-  d <- description$new(file = pkg_desc_path)
-  
-  if (d$has_fields("License")) {
-    License <- d$get_list("License")
-  } else {
-    License <- NULL
-  }  
-
-  return(License)
-}
 
 #' Clean and normalize license names
 #'
@@ -417,6 +778,21 @@ get_pkg_license <- function(pkg_name, pkg_source_path) {
 #'
 #' @keywords internal
 clean_license <- function(x) {
+  # Handle NA, NULL, or non-character inputs
+  if (is.null(x) || (length(x) == 1 && is.na(x))) {
+    return(NULL)
+  }
+  
+  # Convert to character if needed
+  if (!is.character(x)) {
+    x <- as.character(x)
+  }
+  
+  # Handle empty strings
+  if (length(x) == 0 || nchar(x) == 0) {
+    return(NULL)
+  }
+  
   parts <- unlist(strsplit(x, "[,+|]"))
   base_license_names <- c()
   
@@ -428,6 +804,11 @@ clean_license <- function(x) {
     if (nchar(normalized) > 0) {
       base_license_names <- c(base_license_names, normalized)
     }
+  }
+  
+  # Return NULL for empty result to match existing test expectations
+  if (length(base_license_names) == 0) {
+    return(NULL)
   }
   
   return(base_license_names)

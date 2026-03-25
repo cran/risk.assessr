@@ -83,6 +83,16 @@
     ]
   },
   {
+    "label": "documentation",
+    "id": "documentation",
+    "key": "has_ex_docs_score",
+    "thresholds": [
+      { "level": "high", "max": 0.6  },
+      { "level": "medium", "max": 0.8 },
+      { "level": "low", "max": 1 }
+    ]
+  },
+  {
     "label": "R cmd check",
     "id": "cmd-check",
     "key": "cmd_check",

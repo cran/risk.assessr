@@ -125,6 +125,28 @@ type <- c("Imports", "Suggests", "Suggests",
           ) 
 deps_df <- data.frame(package, type)
 
+
+fake_tar <- function() {
+  tf <- tempfile(fileext = ".tar.gz")
+  file.create(tf)
+  tf
+}
+
+make_tarball <- function(destfile, pkg_name = "pkg", version = "0.1") {
+  pkg_dir <- file.path(tempdir(), pkg_name)
+  dir.create(pkg_dir, showWarnings = FALSE, recursive = TRUE)
+  desc <- sprintf(
+    "Package: %s\nVersion: %s\nAuthors@R: person('First', 'Last', email = 'first@example.com', role = 'aut')\n",
+    pkg_name, version
+  )
+  writeLines(desc, file.path(pkg_dir, "DESCRIPTION"))
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(tempdir())
+  utils::tar(destfile, files = pkg_name, tar = "internal")
+  invisible(0)
+}
+
 # Define the generic function
 s3_function_no_body <- function(data, ...) {
   UseMethod("s3_function_no_body")
@@ -156,3 +178,13 @@ s3_function_no_body.dataframe_with_y <- function(data) {
 }
 
 options(repos = c(CRAN = "https://cran.r-project.org"))
+
+# Minimal results object required by write_summary_report()
+fake_results <- list(
+  results = list(
+    pkg_name    = "mockpkg",
+    pkg_version = "0.1.0"
+  ),
+  extra = "anything"
+)
+

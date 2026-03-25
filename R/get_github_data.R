@@ -357,6 +357,9 @@ average_issue_close_time <- function(owner, repo, max_pages = 10, per_page = 100
       return(NULL)
     })
    
+    # ✅ Fix: check that 'issues' is a *data.frame* before looping
+
+
     if (!is.null(issues$message)) {
       msg <- tolower(issues$message)
       

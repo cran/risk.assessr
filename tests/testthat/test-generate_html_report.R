@@ -12,7 +12,40 @@ toy_assessment_results <- list(
     comments = " ",
     has_bug_reports_url = 0,
     license = 1,
-    has_examples = 0,
+    has_examples = list(
+      data = data.frame(
+        function_name = c("here", "i_am", "dr_here", "set_here"),
+        documentation_name = c("here", "i_am", "dr_here", "set_here"),
+        documentation_location = c(
+          "man/here.Rd",
+          "man/i_am.Rd",
+          "man/dr_here.Rd",
+          "man/set_here.Rd"
+        ),
+        example = c(
+          "here()\n\nhere(\"some\", \"path\", \"below\", \"your\", \"project\", \"root.txt\")\nhere(\"some/path/below/your",
+          "here::i_am(\"prepare/penguins.R\")\nhere::i_am(\"analysis/report.Rmd\", uuid = \"f9e884084b84794d762a535f3facec85\")",
+          "dr_here()",
+          "no example"
+        ),
+        stringsAsFactors = FALSE
+      ),
+      example_score = .75
+    ),
+    has_docs = list(
+      data = data.frame(
+        function_name = c("here", "i_am", "dr_here", "set_here"),
+        documentation_name = c("here", "i_am", "dr_here", "set_here"),
+        documentation_location = c(
+          "man/here.Rd",
+          "man/i_am.Rd",
+          "man/dr_here.Rd",
+          "man/set_here.Rd"
+        ),
+        stringsAsFactors = FALSE
+      ),
+      has_docs_score = 1
+    ),
     has_maintainer = 1,
     size_codebase = 0.026,
     has_news = 0,
@@ -188,9 +221,32 @@ test_that("handle_null returns 'N/A' for NULL", {
 })
 
 test_that("handle_null returns original value for non-NULL", {
-  expect_equal(handle_null(123), 123)
+  expect_equal(handle_null(123), "123")
   expect_equal(handle_null("text"), "text")
 })
+
+
+testthat::test_that("handle_null returns comma-separated string for logical inputs", {
+  # Mocked logical inputs
+  x1 <- TRUE
+  x2 <- c(TRUE, FALSE)
+  x3 <- c(TRUE, NA, FALSE)
+  
+  out1 <- handle_null(x1)
+  out2 <- handle_null(x2)
+  out3 <- handle_null(x3)
+  
+  # Each should hit: else if (is.logical(x)) return(paste(as.character(x), collapse = ", "))
+  testthat::expect_identical(out1, "TRUE")
+  testthat::expect_identical(out2, "TRUE, FALSE")
+  testthat::expect_identical(out3, "TRUE, NA, FALSE")
+  
+  # Sanity: each result is a length-1 character scalar
+  testthat::expect_type(out1, "character"); testthat::expect_equal(length(out1), 1L)
+  testthat::expect_type(out2, "character"); testthat::expect_equal(length(out2), 1L)
+  testthat::expect_type(out3, "character"); testthat::expect_equal(length(out3), 1L)
+})
+
 
 test_that("convert_number_to_abbreviation handles millions", {
   expect_equal(convert_number_to_abbreviation(1500000), "1.5M")
@@ -211,6 +267,84 @@ test_that("convert_number_to_abbreviation handles NA and non-numeric", {
   expect_true(is.na(convert_number_to_abbreviation(NA)))
   expect_true(is.na(convert_number_to_abbreviation("text")))
 })
+
+
+testthat::test_that("collapses multi-part given names into a single string", {
+  person_obj <- list(
+    list(
+      given  = c("Jane", "Ann"),
+      family = "Doe",
+      email  = "jane@example.com"
+    )
+  )
+  
+  out <- extract_maintainer_info(person_obj)
+  
+  # Accept both literal angle brackets and HTML-escaped ones.
+  expected_plain <- "Jane Ann Doe < jane@example.com >"
+  expected_html  <- "Jane Ann Doe &lt; jane@example.com &gt;"
+  
+  testthat::expect_true(
+    out %in% c(expected_plain, expected_html),
+    info = paste("Got:", out)
+  )
+})
+
+testthat::test_that("single-part given name is unchanged", {
+  person_obj <- list(
+    list(
+      given  = "Jane",
+      family = "Doe",
+      email  = "jane@example.com"
+    )
+  )
+  
+  out <- extract_maintainer_info(person_obj)
+  
+  expected_plain <- "Jane Doe < jane@example.com >"
+  expected_html  <- "Jane Doe &lt; jane@example.com &gt;"
+  
+  testthat::expect_true(
+    out %in% c(expected_plain, expected_html),
+    info = paste("Got:", out)
+  )
+})
+
+testthat::test_that("uses the first person in the list", {
+  person_obj <- list(
+    list(
+      given  = c("First", "Person"),
+      family = "One",
+      email  = "first.one@example.com"
+    ),
+    list(
+      given  = c("Second", "Person"),
+      family = "Two",
+      email  = "second.two@example.com"
+    )
+  )
+  
+  out <- extract_maintainer_info(person_obj)
+  
+  expected_plain_first <- "First Person One < first.one@example.com >"
+  expected_html_first  <- "First Person One &lt; first.one@example.com &gt;"
+  
+  # Ensure the output corresponds to the FIRST entry, not the second
+  testthat::expect_true(
+    out %in% c(expected_plain_first, expected_html_first),
+    info = paste("Got:", out)
+  )
+  
+  # And it should not match the second entry
+  unexpected_plain_second <- "Second Person Two < second.two@example.com >"
+  unexpected_html_second  <- "Second Person Two &lt; second.two@example.com &gt;"
+  
+  testthat::expect_false(
+    out %in% c(unexpected_plain_second, unexpected_html_second),
+    info = paste("Unexpectedly got:", out)
+  )
+})
+
 
 test_that("generate_rcmd_check_rmd_section works correctly", {
   result <- generate_rcmd_check_section(toy_assessment_results)
@@ -307,7 +441,8 @@ test_that("generate_risk_details works correctly", {
 })
 
 test_that("generate_coverage_section works correctly", {
-  result <- generate_coverage_section(toy_assessment_results)
+  pkg_name <- "test.package.0001"
+  result <- generate_coverage_section(toy_assessment_results, pkg_name)
   expect_equal(result$Function[1], "R/myscript.R")
   expect_equal(result$Coverage[1], 50)
   expect_equal(result$Errors, "No test coverage errors")
@@ -340,11 +475,204 @@ test_that("create_file_coverage_df works correctly with toy dataset", {
   expect_equal(result, expected_output)
 })
 
+
+testthat::test_that("generate_coverage_section returns NA-row when file_names is NULL", {
+  # Build file_coverage such that:
+  # - attr(file_coverage, "dimnames")[[1]] returns NULL (so file_names <- NULL)
+  # - No errors occur in grepl("^(/|[A-Za-z]:)", file_names) because we'll stub grepl.
+  file_coverage_mat <- matrix(
+    numeric(0),
+    nrow = 0, ncol = 0,
+    dimnames = list(NULL, NULL)  # makes attr(..., "dimnames")[[1]] == NULL
+  )
+  
+  assessment_results <- list(
+    covr_list = list(
+      res_cov = list(
+        coverage = list(
+          totalcoverage = 85.1,   # arbitrary; not used in this test
+          filecoverage  = file_coverage_mat
+        ),
+        # Force the 'else' branch (not the create_file_coverage_df path)
+        errors = NA,   # will be converted to "No test coverage errors" earlier
+        notes  = NA    # will be converted to "No test coverage notes" earlier
+      )
+    )
+  )
+  
+  # Create a stubbed copy of the function to neutralize grepl on NULL file_names
+  fn <- generate_coverage_section
+  
+  # grepl(NULL) would normally error; stub grepl INSIDE the function to always return FALSE
+  mockery::stub(fn, "grepl", function(pattern, x) FALSE)
+  
+  # Call with any pkg_name (glue::glue not hit because grepl returns FALSE)
+  out <- fn(assessment_results, pkg_name = "mypkg")
+  
+  # Validate the NA-row data.frame
+  testthat::expect_s3_class(out, "data.frame")
+  testthat::expect_identical(colnames(out), c("Function", "Coverage", "Errors", "Notes"))
+  testthat::expect_equal(nrow(out), 1L)
+  
+  # Column-wise checks match the code block: NA_character_, NA_real_, NA, NA
+  testthat::expect_true(is.na(out$Function))
+  testthat::expect_identical(typeof(out$Function), "character")
+  
+  testthat::expect_true(is.na(out$Coverage))
+  testthat::expect_identical(typeof(out$Coverage), "double")  # NA_real_
+  
+  testthat::expect_true(is.na(out$Errors))
+  testthat::expect_identical(typeof(out$Errors), "logical")   # plain NA
+  
+  testthat::expect_true(is.na(out$Notes))
+  testthat::expect_identical(typeof(out$Notes), "logical")    # plain NA
+})
+
+
 test_that("generate_doc_metrics_section works correctly", {
   result <- generate_doc_metrics_section(toy_assessment_results)
-  expect_equal(result$Metric[1], "Has Bug Reports URL")
-  expect_equal(result$Value[1], "Not Included")
+  
+  expect_true(is.data.frame(result$has_examples))
+    
+  # Correct columns
+  expect_identical(
+    names(result$has_examples),
+    c("function_name", "documentation_name", "documentation_location", "example")
+  )
+    
+  # Score attribute exists
+  expect_true(!is.null(attr(result$has_examples, "score")))
+    
+  # Score is numeric, NA allowed
+  expect_true(is.numeric(attr(result$has_examples, "score")))
+  
+  # use match because string truncated in your display
+  
+  
+  expect_true(is.data.frame(result$has_docs))
+  
+  expect_identical(
+    names(result$has_docs),
+    c("function_name", "documentation_name", "documentation_location")
+  )
+  
+  # Score attribute exists
+  expect_true(!is.null(attr(result$has_docs, "score")))
+  
+  # Score is numeric
+  expect_true(is.numeric(attr(result$has_docs, "score")))
+  
+  
+  expect_true(is.data.frame(result$doc_metrics))
+  
+  expect_identical(names(result$doc_metrics), c("Metric", "Value"))
+  
+  # Metric must be character
+  expect_true(is.character(result$doc_metrics$Metric))
+  
+  # Value must be character (your example shows strings)
+  expect_true(is.character(result$doc_metrics$Value))
+  
+  # high level structure test
+  expect_true(is.list(result))
+  expect_named(result, c("has_examples", "has_docs", "doc_metrics"))
+  
 })
+
+
+# ---- Helpers ---------------------------------------------------------------
+
+# Build a minimal assessment_results with pluggable 'has_examples'
+make_base_assessment_for_examples <- function(hex_obj) {
+  list(
+    results = list(
+      author = list(
+        # Structure not actually used because we'll stub extract_maintainer_info()
+        maintainer = list(name = "Any", email = "any@example.com")
+      ),
+      # Target under test:
+      has_examples = hex_obj,
+      
+      # Provide a simple valid has_docs to avoid interference with our focus
+      has_docs = data.frame(doc = "README", present = TRUE, stringsAsFactors = FALSE),
+      
+      # Other metrics (simple scalars) — will be passed through handle_null (stubbed)
+      has_bug_reports_url = 1,
+      license             = 1,
+      has_news            = 0,
+      has_source_control  = 1,
+      has_vignettes       = 0,
+      has_website         = 1,
+      news_current        = 1,
+      export_help         = 0
+    )
+  )
+}
+
+# Create a stubbed copy of the function so external helpers don't leak into tests
+make_stubbed_fun <- function() {
+  fn <- generate_doc_metrics_section
+  # Stub external helpers referenced by the function
+  mockery::stub(fn, "extract_maintainer_info", function(x) "Mock Maintainer <mock@example.com>")
+  mockery::stub(fn, "handle_null", function(x) x)  # identity to keep values as-is
+  fn
+}
+
+# ---- Tests -----------------------------------------------------------------
+
+testthat::test_that("'has_examples' as data.frame is used directly and score attr set to NA_real_", {
+  # This should exercise:
+  # } else if (is.data.frame(hex)) {
+  #   has_examples_df <- hex
+  #   attr(has_examples_df, "score") <- NA_real_
+  # }
+  hex_df <- data.frame(
+    name    = c("f1", "f2", "f3"),
+    example = c("Has example", "No Example", "no example "),
+    stringsAsFactors = FALSE
+  )
+  
+  assessment_results <- make_base_assessment_for_examples(hex_df)
+  fn <- make_stubbed_fun()
+  
+  out <- fn(assessment_results)
+  
+  # Validate structure
+  testthat::expect_true(is.list(out))
+  testthat::expect_true("has_examples" %in% names(out))
+  has_examples_df <- out$has_examples
+  testthat::expect_s3_class(has_examples_df, "data.frame")
+  
+  # Because the function filters to rows where example == "no example" (case/space-insensitive),
+  # we should only keep rows 2 and 3 from the original data.
+  testthat::expect_equal(nrow(has_examples_df), 2L)
+  testthat::expect_true(all(tolower(trimws(has_examples_df$example)) == "no example"))
+  
+  # Attribute must be NA_real_
+  sc <- attr(has_examples_df, "score")
+  testthat::expect_true(is.na(sc))
+  testthat::expect_identical(typeof(sc), "double")
+})
+
+testthat::test_that("'has_examples' missing (NULL/other) yields empty data.frame and score NA_real_", {
+  
+  hex <- NULL
+  
+  assessment_results <- make_base_assessment_for_examples(hex)
+  fn <- make_stubbed_fun()
+  
+  out <- fn(assessment_results)
+  
+  has_examples_df <- out$has_examples
+  testthat::expect_s3_class(has_examples_df, "data.frame")
+  testthat::expect_equal(nrow(has_examples_df), 0L)
+  testthat::expect_equal(ncol(has_examples_df), 0L)
+  
+  sc <- attr(has_examples_df, "score")
+  testthat::expect_true(is.na(sc))
+  testthat::expect_identical(typeof(sc), "double")
+})
+
 
 test_that("generate_pop_metrics_section works correctly", {
   result <- generate_pop_metrics_section(toy_assessment_results)
@@ -478,5 +806,126 @@ test_that("generate_html_report creates an HTML report", {
   expect_true(length(html_files) > 0, info = "No HTML report was generated")
   expect_true(file.info(html_files[1])$size > 0, info = "HTML report is empty")
   
+})
+
+
+# Helper to build a minimal assessment_results with pluggable 'has_docs'
+make_base_assessment <- function(has_docs_obj) {
+  list(
+    results = list(
+      author = list(
+        maintainer = list(name = "Any Name", email = "any@example.com")
+      ),
+      # has_examples is exercised but not the focus; we keep it minimal and valid
+      has_examples = list(
+        data = data.frame(
+          `function` = c("f1", "f2"),
+          example  = c("Has example", "No Example"),
+          stringsAsFactors = FALSE
+        ),
+        example_score = 0.75
+      ),
+      # The branch under test:
+      has_docs = has_docs_obj,
+      
+      # The remaining metrics used by the function — provide simple 0/1 values
+      has_bug_reports_url = 1,
+      license             = 1,
+      has_news            = 0,
+      has_source_control  = 1,
+      has_vignettes       = 0,
+      has_website         = 1,
+      news_current        = 1,
+      export_help         = 0
+    )
+  )
+}
+
+# Utility to create a stubbed copy of the function under test
+make_stubbed_fun <- function() {
+  # Local copy so stub works on a closure we can call in tests
+  fn <- generate_doc_metrics_section
+  
+  # Stub external helpers referenced by the function
+  mockery::stub(fn, "extract_maintainer_info", function(x) "Mock Maintainer <mock@example.com>")
+  mockery::stub(fn, "handle_null", function(x) x)  # identity to keep values as-is
+  
+  fn
+}
+
+testthat::test_that("has_docs list with data + has_docs_score sets data.frame and score attr", {
+  hdoc <- list(
+    data = data.frame(doc = c("README", "NEWS"), present = c(TRUE, TRUE), stringsAsFactors = FALSE),
+    has_docs_score = 0.9
+  )
+  assessment_results <- make_base_assessment(hdoc)
+  fn <- make_stubbed_fun()
+  
+  out <- fn(assessment_results)
+  
+  testthat::expect_true(is.list(out))
+  testthat::expect_true("has_docs" %in% names(out))
+  
+  has_docs_df <- out$has_docs
+  testthat::expect_s3_class(has_docs_df, "data.frame")
+  testthat::expect_equal(nrow(has_docs_df), 2L)
+  testthat::expect_equal(attr(has_docs_df, "score"), 0.9, tolerance = 1e-12)
+})
+
+testthat::test_that("has_docs list with data + NULL has_docs_score falls back to NA_real_", {
+  hdoc <- list(
+    data = data.frame(doc = "README", present = TRUE, stringsAsFactors = FALSE),
+    has_docs_score = NULL
+  )
+  assessment_results <- make_base_assessment(hdoc)
+  fn <- make_stubbed_fun()
+  
+  out <- fn(assessment_results)
+  
+  has_docs_df <- out$has_docs
+  testthat::expect_s3_class(has_docs_df, "data.frame")
+  testthat::expect_equal(nrow(has_docs_df), 1L)
+  
+  sc <- attr(has_docs_df, "score")
+  testthat::expect_true(is.na(sc))
+  # Confirm numeric NA (NA_real_) — typeof should be "double"
+  testthat::expect_identical(typeof(sc), "double")
+})
+
+testthat::test_that("has_docs data.frame path returns input data.frame and score attr NA_real_", {
+  hdoc <- data.frame(
+    doc = c("README", "VIGNETTE"),
+    present = c(TRUE, FALSE),
+    stringsAsFactors = FALSE
+  )
+  assessment_results <- make_base_assessment(hdoc)
+  fn <- make_stubbed_fun()
+  
+  out <- fn(assessment_results)
+  
+  has_docs_df <- out$has_docs
+  testthat::expect_s3_class(has_docs_df, "data.frame")
+  testthat::expect_equal(nrow(has_docs_df), 2L)
+  # Score attribute must be NA_real_
+  sc <- attr(has_docs_df, "score")
+  testthat::expect_true(is.na(sc))
+  testthat::expect_identical(typeof(sc), "double")
+})
+
+testthat::test_that("has_docs fallback path (NULL/other) yields empty data.frame and score attr NA_real_", {
+  hdoc <- NULL  # could also be an atomic or list without $data; either triggers the else branch
+  assessment_results <- make_base_assessment(hdoc)
+  fn <- make_stubbed_fun()
+  
+  out <- fn(assessment_results)
+  
+  has_docs_df <- out$has_docs
+  testthat::expect_s3_class(has_docs_df, "data.frame")
+  testthat::expect_equal(nrow(has_docs_df), 0L)
+  testthat::expect_equal(ncol(has_docs_df), 0L)
+  
+  sc <- attr(has_docs_df, "score")
+  testthat::expect_true(is.na(sc))
+  testthat::expect_identical(typeof(sc), "double")
 })
 

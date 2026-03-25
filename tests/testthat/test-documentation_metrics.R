@@ -33,7 +33,7 @@ test_that("test doc_riskmetrics", {
     doc_riskmetric_test <- 
       doc_riskmetric(pkg_name, pkg_ver, pkg_source_path)
     
-    expect_identical(length(doc_riskmetric_test), 10L)
+    expect_identical(length(doc_riskmetric_test), 12L)
     expect_true(checkmate::check_list(doc_riskmetric_test, all.missing = FALSE))
     expect_true(checkmate::check_list(doc_riskmetric_test, any.missing = TRUE))
   }
@@ -64,6 +64,20 @@ test_that("doc_riskmetric handles missing R folder", {
   mockery::stub(doc_riskmetric, "assess_examples", function(...) TRUE)
   mockery::stub(doc_riskmetric, "assess_news", function(...) TRUE)
   mockery::stub(doc_riskmetric, "assess_news_current", function(...) TRUE)
+  
+  
+  # Stub assess_examples to avoid tools::Rd_db
+  mockery::stub(doc_riskmetric, "assess_examples", function(...) {
+    list(data = data.frame(function_name = "fun", example = "no example"), example_score = 50)
+  })
+  
+  
+  # Stub assess_exported_functions_docs to avoid tools::Rd_db
+  mockery::stub(doc_riskmetric, "assess_exported_functions_docs", function(...) {
+    list(data = data.frame(function_name = "fun", documentation_name = "topic", documentation_location = "man/topic.Rd"),
+         documentation_score = 75)
+  })
+  
   
   pkg_name <- "mockpkg"
   pkg_ver <- "0.1.0"
@@ -326,7 +340,7 @@ test_that("parse license for tar file MIT", {
   })
   
   if (package_installed == TRUE ) {	
-    result <- get_pkg_license("here", pkg_source_path)
+    result <- extract_license_from_description(pkg_source_path)
     expect_equal(result, "MIT + file LICENSE")
   }
 })
@@ -361,7 +375,7 @@ test_that("parse authors for tar file Apache License", {
   rcmdcheck_args <- install_list$rcmdcheck_args
   
   if (package_installed == TRUE ) {	
-    result <- get_pkg_license("test.package.0001", pkg_source_path)
+    result <- extract_license_from_description(pkg_source_path)
     expect_equal(result, "Apache License (>= 2)")
   }
 })
@@ -399,8 +413,8 @@ test_that("parse license not present", {
   rcmdcheck_args <- install_list$rcmdcheck_args
   
   if (package_installed == TRUE ) {	
-    result <- get_pkg_license("test.package.0007", pkg_source_path)
-    expect_null(result)
+    result <- extract_license_from_description(pkg_source_path)
+    expect_true(is.na(result))
   }
 })
 
@@ -1230,24 +1244,121 @@ test_that("assess exports for examples works correctly", {
     
     testthat::expect_message(
       has_examples <- assess_examples(pkg_name, pkg_source_path),
-      glue::glue("{(pkg_name)} has examples"),
+      glue::glue("{(pkg_name)}: 75.00% of exported functions have examples"),
       fixed = TRUE
     )
     
     has_examples <- assess_examples(pkg_name, pkg_source_path)
     
-    expect_identical(length(has_examples), 1L)
+    expect_identical(length(has_examples), 2L)
     
     expect_vector(has_examples)
     
-    expect_true(checkmate::check_numeric(has_examples, 
-                                         any.missing = FALSE)
+    expect_true(checkmate::check_list(has_examples, 
+                                         any.missing = TRUE)
     )
     
-    testthat::expect_equal(has_examples, 1L) 
+    testthat::expect_length(has_examples, 2L) 
   }
   
 })
+
+
+test_that("assess_examples returns 'No documentation found' and 'no Rd file' when find_rd_for_fun() returns NULL", {
+  # Bind the function object
+  fn <- assess_examples
+  
+  # Stub tools::Rd_db to return an empty Rd database (or minimal)
+  mockery::stub(fn, "tools::Rd_db", function(dir) list())
+  
+  # Stub build_rd_index to return a dummy index
+  mockery::stub(fn, "build_rd_index", function(db) list(alias_index = new.env(), topic_by_file = character(0)))
+  
+  # Stub find_rd_for_fun to always return NULL (simulate missing Rd doc)
+  mockery::stub(fn, "find_rd_for_fun", function(fun, db, idx) NULL)
+  
+  # Stub extract_examples_text (won't be called because hit is NULL)
+  mockery::stub(fn, "extract_examples_text", function(rd_doc) stop("Should not be called"))
+  
+  # Stub rd_name (won't be called because hit is NULL)
+  mockery::stub(fn, "rd_name", function(rd) stop("Should not be called"))
+  
+  # Stub asNamespace and getNamespaceExports to simulate exported functions
+  mockery::stub(fn, "asNamespace", function(pkg) pkg)
+  mockery::stub(fn, "getNamespaceExports", function(ns) c("funA", "funB"))
+  
+  # Stub getExportedValue to return dummy functions
+  mockery::stub(fn, "getExportedValue", function(ns, name) function() NULL)
+  
+  # Run the function
+  result <- fn(pkg_name = "mockpkg", pkg_source_path = "mock/path")
+  
+  # Assertions
+  expect_s3_class(result$data, "data.frame")
+  expect_equal(nrow(result$data), 2) # two exported functions
+  expect_true(all(result$data$documentation_name == "No documentation found"))
+  expect_true(all(result$data$example == "no Rd file"))
+  expect_true(all(is.na(result$data$documentation_location)))
+  expect_equal(result$example_score, 0) # no examples found
+})
+
+
+test_that("assess_exported_functions_docs returns empty data frame when no exported functions", {
+  fn <- assess_exported_functions_docs
+  
+  # Stub tools::Rd_db to return an empty Rd database
+  mockery::stub(fn, "tools::Rd_db", function(dir) list())
+  
+  # Stub asNamespace and getNamespaceExports to simulate no exports
+  mockery::stub(fn, "asNamespace", function(pkg) pkg)
+  mockery::stub(fn, "getNamespaceExports", function(ns) character(0))
+  
+  # Run the function
+  expect_message(
+    result <- fn(pkg_name = "mockpkg", pkg_source_path = "mock/path"),
+    regexp = "mockpkg: no exported functions found; documentation score = 0.00%"
+  )
+  
+  # Assertions
+  expect_s3_class(result$data, "data.frame")
+  expect_equal(nrow(result$data), 0)
+  expect_equal(result$has_docs_score, 0)
+})
+
+
+test_that("assess_exported_functions_docs returns 'No documentation found' when find_rd_for_fun returns NULL", {
+  fn <- assess_exported_functions_docs
+  
+  # Stub tools::Rd_db to return a dummy Rd database
+  mockery::stub(fn, "tools::Rd_db", function(dir) list())
+  
+  # Stub build_rd_index to return a dummy index
+  mockery::stub(fn, "build_rd_index", function(db) list(alias_index = new.env(), topic_by_file = character(0)))
+  
+  # Stub find_rd_for_fun to always return NULL
+  mockery::stub(fn, "find_rd_for_fun", function(fun, db, idx) NULL)
+  
+  # Stub asNamespace and getNamespaceExports to simulate exported functions
+  mockery::stub(fn, "asNamespace", function(pkg) pkg)
+  mockery::stub(fn, "getNamespaceExports", function(ns) c("funA", "funB"))
+  
+  # Stub getExportedValue to return dummy functions
+  mockery::stub(fn, "getExportedValue", function(ns, name) function() NULL)
+  
+  # Run the function
+  expect_message(
+    result <- fn(pkg_name = "mockpkg", pkg_source_path = "mock/path"),
+    regexp = "mockpkg: 0.00% of exported functions have documentation"
+  )
+  
+  # Assertions
+  expect_s3_class(result$data, "data.frame")
+  expect_equal(nrow(result$data), 2)
+  expect_true(all(result$data$documentation_name == "No documentation found"))
+  expect_true(all(is.na(result$data$documentation_location)))
+  expect_equal(result$has_docs_score, 0)
+})
+
 
 test_that("assess exports for missing examples works correctly", {
   
@@ -1255,9 +1366,91 @@ test_that("assess exports for missing examples works correctly", {
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
   
+  
+  # Ensure installs during this test go to a temp lib that stays on .libPaths()
+  temp_lib <- file.path(tempdir(), "testthat-lib")
+  dir.create(temp_lib, recursive = TRUE, showWarnings = FALSE)
+  withr::local_libpaths(new = temp_lib, action = "prefix")
+  
+  
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
                          "test.package.0001_0.1.0.tar.gz", 
+                         package = "risk.assessr")
+  testthat::skip_if(identical(dp_orig, ""), "Bundled test tarball not found")
+  
+  dp <- tempfile(fileext = ".tar.gz")
+  file.copy(dp_orig, dp)
+  
+  # Defer cleanup of copied tarball
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  # Defer cleanup of unpacked source directory
+  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
+               envir = parent.frame())
+  
+  
+  # set up package
+  install_list <- set_up_pkg(dp)
+  
+  build_vignettes <- install_list$build_vignettes
+  package_installed <- install_list$package_installed
+  pkg_source_path <- install_list$pkg_source_path
+  rcmdcheck_args <- install_list$rcmdcheck_args
+  
+  if (package_installed == TRUE ) {	
+    
+    # Get package name and version
+    pkg_desc <- get_pkg_desc(pkg_source_path, fields = c("Package", "Version"))
+    pkg_name <- pkg_desc$Package
+    
+    
+    # First attempt: should be found on .libPaths() because we prefixed temp_lib
+    available <- requireNamespace(pkg_name, quietly = TRUE)
+    
+    # Fallback: load from source if not found (use pkgload if available)
+    if (!available && dir.exists(pkg_source_path)) {
+      testthat::skip_if_not_installed("pkgload")
+      pkgload::load_all(pkg_source_path, quiet = TRUE, helpers = FALSE)
+      available <- requireNamespace(pkg_name, quietly = TRUE)
+    }
+    
+    testthat::skip_if_not(
+      available,
+      message = paste("Package", pkg_name, "not available in .libPaths() in CI")
+    )
+    
+    
+    testthat::expect_message(
+      has_examples <- assess_examples(pkg_name, pkg_source_path),
+      glue::glue("{(pkg_name)}: 0.00% of exported functions have examples"),
+      fixed = TRUE
+    )
+    
+    has_examples <- assess_examples(pkg_name, pkg_source_path)
+    
+    expect_identical(length(has_examples), 2L)
+    
+    expect_vector(has_examples)
+    
+    expect_true(checkmate::check_list(has_examples, 
+                                      any.missing = TRUE)
+    )
+    
+    testthat::expect_length(has_examples, 2L) 
+  }
+  
+})
+
+test_that("assess exports for packages - no exported functions works correctly", {
+  
+  r = getOption("repos")
+  r["CRAN"] = "http://cran.us.r-project.org"
+  options(repos = r)
+  
+  # Copy test package to a temp file
+  dp_orig <- system.file("test-data", 
+                         "test.package.0005_0.1.0.tar.gz", 
                          package = "risk.assessr")
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
@@ -1286,21 +1479,21 @@ test_that("assess exports for missing examples works correctly", {
     
     testthat::expect_message(
       has_examples <- assess_examples(pkg_name, pkg_source_path),
-      glue::glue("{(pkg_name)} has no examples"),
+      glue::glue("{(pkg_name)}: no exported functions found; example score = 0.00%"),
       fixed = TRUE
     )
     
     has_examples <- assess_examples(pkg_name, pkg_source_path)
     
-    expect_identical(length(has_examples), 1L)
+    expect_identical(length(has_examples), 2L)
     
     expect_vector(has_examples)
     
-    expect_true(checkmate::check_numeric(has_examples, 
-                                         any.missing = FALSE)
+    expect_true(checkmate::check_list(has_examples, 
+                                      any.missing = TRUE)
     )
     
-    testthat::expect_equal(has_examples, 0L) 
+    testthat::expect_length(has_examples, 2L) 
   }
   
 })
@@ -1847,5 +2040,68 @@ test_that("assess code base size for large package works correctly", {
     testthat::expect_gt(size_codebase, 0.85) 
   }
   
+})
+
+
+test_that("returns NA when both inputs are NA", {
+  expect_true(is.na(create_has_ex_docs_score(NA_real_, NA_real_)))
+})
+
+test_that("returns the non-NA input when the other is NA", {
+  expect_equal(create_has_ex_docs_score(0.75, NA_real_), 0.75)
+  expect_equal(create_has_ex_docs_score(NA_real_, 1), 1)
+})
+
+test_that("computes the mean for numeric scalars", {
+  expect_equal(create_has_ex_docs_score(0, 0), 0)
+  expect_equal(create_has_ex_docs_score(1, 1), 1)
+  expect_equal(create_has_ex_docs_score(0, 1), 0.5)
+  expect_equal(create_has_ex_docs_score(0.75, 1), 0.875)
+})
+
+test_that("works with integer inputs", {
+  expect_equal(create_has_ex_docs_score(0L, 1L), 0.5)
+  expect_type(create_has_ex_docs_score(0L, 1L), "double")  # result should be double
+})
+
+test_that("vector inputs are concatenated and averaged (not elementwise)", {
+  e <- c(0.2, 0.8)
+  d <- c(0.4, 0.6)
+  expected <- mean(c(e, d), na.rm = TRUE)  # = 0.5
+  expect_equal(create_has_ex_docs_score(e, d), expected)
+})
+
+test_that("handles NA within vectors using na.rm=TRUE", {
+  e <- c(0.2, NA_real_)
+  d <- c(NA_real_, 0.8)
+  # concatenated -> c(0.2, NA, NA, 0.8) -> mean of c(0.2, 0.8) = 0.5
+  expect_equal(create_has_ex_docs_score(e, d), 0.5)
+})
+
+test_that("treats NaN like NA (removed when na.rm=TRUE)", {
+  e <- c(0.2, NaN)
+  d <- c(NA_real_, 0.8)
+  expected <- mean(c(0.2, NaN, NA_real_, 0.8), na.rm = TRUE)  # = 0.5
+  expect_equal(create_has_ex_docs_score(e, d), expected)
+})
+
+test_that("mixed vector + scalar works (scalar just joins the pool)", {
+  e <- c(0.2, 0.8)
+  d <- 0.5
+  expected <- mean(c(e, d), na.rm = TRUE)  # = 0.5
+  expect_equal(create_has_ex_docs_score(e, d), expected)
+})
+
+test_that("symmetry: order of arguments does not change the result", {
+  e <- c(0.1, 0.5, 0.9)
+  d <- c(0.3, NA_real_)
+  expect_equal(create_has_ex_docs_score(e, d),
+               create_has_ex_docs_score(d, e))
+})
+
+test_that("always returns a length-1 double", {
+  res <- create_has_ex_docs_score(c(0.2, 0.3), c(0.4, 0.5))
+  expect_equal(length(res), 1L)
+  expect_type(res, "double")
 })
 

@@ -56,31 +56,77 @@ parse_dcf_dependencies_version <- function(path) {
   return(deps)
 }
 
+#' Extract License from Package DESCRIPTION File
+#' 
+#' This function extracts the license information from a package's DESCRIPTION file.
+#'
+#' @param path A character string specifying the path to the package directory containing the DESCRIPTION file.
+#' 
+#' @return A character string representing the package license, or `NA` if not found.
+#' 
+#' @importFrom desc description
+#' @keywords internal
+extract_license_from_description <- function(path) {
+  desc_file <- file.path(path, "DESCRIPTION")
+  
+  License <- NA_character_
+  
+  if (!file.exists(desc_file)) {
+    warning("DESCRIPTION file not found: ", desc_file)
+  } else {
+    tryCatch({
+      d <- description$new(file = desc_file)
+      
+      if (!d$has_fields("License")) {
+        warning("No License field in DESCRIPTION: ", desc_file)
+      } else {
+        License_list <- d$get_list("License")
+        
+        if (is.null(License_list) || length(License_list) == 0) {
+          warning("License field is empty in DESCRIPTION: ", desc_file)
+        } else {
+          License <- as.character(License_list)
+        }
+      }
+    }, error = function(e) {
+      warning("Failed to extract License from DESCRIPTION: ", conditionMessage(e))
+      License <- NA_character_
+    })
+  }
+  
+  return(License)
+}
+
+
 
 
 #' Download and Parse Dependencies of an R Package
 #' 
-#' This function downloads a specific version of an R package from a repository,
-#' extracts it, and parses its dependencies from the DESCRIPTION file.
+#' Downloads a package from a repository, extracts it, and parses dependencies from the DESCRIPTION file.
 #'
-#' @param package_name A character string representing the name of the package to download.
-#' @param version A character string specifying the version of the package to download. Defaults to `NA`, which fetches the latest version.
+#' @param package_name Name of the package to download.
+#' @param version Package version to download (default: `NA` for latest).
+#' @param get_license Whether to extract license information (default: `FALSE`).
 #' 
-#' @return A data frame containing:
-#' 	- `package`: The name of the dependency.
-#' 	- `type`: The type of dependency (e.g., "Imports").
-#' 	- `parent_package`: The original package for which dependencies were parsed.
+#' @return When `get_license = FALSE`, a data frame with columns `package`, `type`, and `parent_package`.
+#'   When `get_license = TRUE`, a list with:
+#'     - `dependencies`: Data frame of direct dependencies.
+#'     - `license`: License of the specified package only (not dependencies). Returns `NA` if not found.
+#' 
+#' @details The `license` field refers only to the package specified by `package_name`, not its dependencies.
+#'   Use `build_dependency_tree()` or `fetch_all_dependencies()` with `get_license = TRUE` for full license information.
 #' 
 #' @import dplyr
 #' @examples
 #' \dontrun{
 #' download_and_parse_dependencies("dplyr")
+#' download_and_parse_dependencies("dplyr", get_license = TRUE)
 #' }
 #' @export
-download_and_parse_dependencies <- function(package_name, version=NA) {
+download_and_parse_dependencies <- function(package_name, version = NA, get_license = FALSE) {
   
   tryCatch({
-    temp_file <- remotes::download_version(package=package_name, version=version)
+    temp_file <- remotes::download_version(package = package_name, version = version)
     
     temp_dir <- tempfile()
     dir.create(temp_dir)
@@ -88,34 +134,46 @@ download_and_parse_dependencies <- function(package_name, version=NA) {
     
     extracted_dirs <- list.dirs(temp_dir, full.names = TRUE, recursive = FALSE)
     
-    if (length(extracted_dirs) == 1) {
-      package_dir <- extracted_dirs[1]
+    package_dir <- if (length(extracted_dirs) == 1) {
+      extracted_dirs[1]
     } else {
-      package_dir <- file.path(temp_dir, package_name)
+      file.path(temp_dir, package_name)
     }
     
     desc_path <- file.path(package_dir, "DESCRIPTION")
     
     if (!file.exists(desc_path)) {
-      desc_files <- list.files(package_dir, pattern="DESCRIPTION", recursive=TRUE, full.names=TRUE)
-      if (length(desc_files) > 0) {
-        desc_path <- desc_files[1]
-      }
+      desc_files <- list.files(package_dir, pattern = "DESCRIPTION", recursive = TRUE, full.names = TRUE)
+      if (length(desc_files) > 0) desc_path <- desc_files[1]
     }
     
     if (!file.exists(desc_path)) {
       stop(paste("DESCRIPTION file not found for", package_name))
     }
     
-    dependencies <- parse_dcf_dependencies_version(package_dir)
-    dependencies <- dependencies %>% 
-      mutate(parent_package = package_name)
+    dependencies <- parse_dcf_dependencies_version(package_dir) %>%
+      dplyr::mutate(parent_package = package_name)
+    
+    license <- NA_character_
+    if (get_license) {
+      license <- extract_license_from_description(package_dir)
+    }
     
     unlink(temp_dir, recursive = TRUE)
-    return(dependencies)
+    
+    list(dependencies = dependencies, license = license)
     
   }, error = function(e) {
     message(paste("Failed to download or parse", package_name, "-", e$message))
+    list(
+      dependencies = data.frame(
+        package = character(),
+        type = character(),
+        parent_package = character(),
+        stringsAsFactors = FALSE
+      ),
+      license = NA_character_
+    )
   })
 }
 
@@ -151,40 +209,93 @@ extract_package_version <- function(package_name) {
 #' Build a Dependency Tree for an R Package
 #' 
 #' This function constructs a nested list representing the dependency tree of a specified R package.
-#' The recursion stops at a depth of 3 levels (or until base package).
+#' The recursion stops at the specified maximum depth level (default: 3) or until a base package is reached.
 #'
 #' @param package_name A character string specifying the name of the package.
 #' @param level An integer indicating the current recursion depth (default: 1).
+#' @param get_license A logical value indicating whether to extract and include license information from DESCRIPTION files (default: `FALSE`).
+#' @param max_level An integer specifying the maximum depth level for dependency recursion (default: 3). 
+#'                  Set to a higher value to explore deeper dependency layers.
 #'
 #' @return A nested list representing the dependency tree, where base packages are marked as "base".
+#'         If `get_license` is `TRUE`, each package entry in the tree includes a `license` field containing 
+#'         that specific package's license (extracted from its DESCRIPTION file). Each package's license is 
+#'         independent - the license of a parent package does not imply the licenses of its dependencies.
 #'
 #' @examples
 #' \dontrun{
 #' build_dependency_tree("ggplot2")
+#' build_dependency_tree("ggplot2", get_license = TRUE)
+#' build_dependency_tree("ggplot2", max_level = 5)  # Deeper dependency exploration
 #' }
 #'
 #' @export
-build_dependency_tree <- function(package_name, level = 1) {
+build_dependency_tree <- function(package_name, level = 1, get_license = FALSE, max_level = 3) {
   
   message("Dependency tree in progress for " , package_name, " package")
+
+  # Validate max_level (must be non-negative)
+  if (!is.numeric(max_level) || length(max_level) != 1 || max_level < 0 || max_level != as.integer(max_level)) {
+    warning("max_level must be a non-negative integer")
+    return(NULL)  
+  }
   
-  if (level > 3) return(NULL)  # Stop at 3 levels
+  # Validate package_name
+  if (!is.character(package_name) || length(package_name) != 1 || is.na(package_name) || nchar(trimws(package_name)) == 0) {
+    warning("package_name must be a non-empty character string")
+    return(NULL)  
+  }
   
-  deps <- download_and_parse_dependencies(package_name)
+  if (level > max_level) return(NULL)  # Stop at max_level
+  
+  result <- download_and_parse_dependencies(package_name, get_license = get_license)
+  
+  # Handle both old format (data.frame) and new format (list with dependencies and license)
+  # Note: data.frames are lists in R, so check for list with "dependencies" key first
+  if (is.null(result)) {
+    deps <- data.frame(package = character(), type = character(), stringsAsFactors = FALSE)
+    package_license <- NULL
+  } else if (is.list(result) && !is.data.frame(result) && "dependencies" %in% names(result)) {
+    # This is the new format: list with dependencies and license
+    deps <- result$dependencies
+    package_license <- result$license
+  } else if (is.data.frame(result)) {
+    # This is the old format: just a data.frame
+    deps <- result
+    package_license <- NULL
+  } else {
+    deps <- data.frame(package = character(), type = character(), stringsAsFactors = FALSE)
+    package_license <- NULL
+  }
+  
+  # Ensure deps has the required structure
+  if (!is.data.frame(deps) || !"package" %in% names(deps)) {
+    deps <- data.frame(package = character(), type = character(), stringsAsFactors = FALSE)
+  }
+  
   package_version <- extract_package_version(package_name)
-  dep_list <- list(version = package_version)
   
-  for (dep in deps$package) {
-    dep_name <- gsub("\\s*\\(.*\\)", "", dep)
-    
-    if (is_base(dep_name)) {
-      dep_list[[dep_name]] <- "base"
-    } else {
-      dep_list[[dep_name]] <- build_dependency_tree(dep_name, level + 1)
+  dep_list <- list(version = package_version)
+  if (get_license && !is.null(package_license) && !is.na(package_license)) {
+    dep_list$license <- package_license
+  }
+  
+  if (nrow(deps) > 0 && "package" %in% names(deps)) {
+    for (dep in deps$package) {
+      if (!is.na(dep) && !is.null(dep) && nchar(trimws(dep)) > 0) {
+        dep_name <- gsub("\\s*\\(.*\\)", "", dep)
+        
+        if (is_base(dep_name)) {
+          dep_list[[dep_name]] <- "base"
+        } else {
+          dep_list[[dep_name]] <- build_dependency_tree(dep_name, level + 1, get_license = get_license, max_level = max_level)
+        }
+      }
     }
   }
   
   message("Finished building for ", package_name)
+  
   return(dep_list)
 }
 
@@ -193,20 +304,43 @@ build_dependency_tree <- function(package_name, level = 1) {
 #' This function builds and retrieves the full dependency tree for a given R package.
 #'
 #' @param package_name A character string specifying the name of the package.
+#' @param get_license A logical value indicating whether to extract and include license information from DESCRIPTION files (default: `FALSE`).
+#' @param max_level An integer specifying the maximum depth level for dependency recursion (default: 3).
+#'                  Set to a higher value to explore deeper dependency layers.
 #' 
-#' @return A nested list representing the dependency tree of the package.
+#' @return A nested list representing the dependency tree of the package. If `get_license` is `TRUE`, 
+#'         each package in the tree (including the root package and all dependencies) will have a 
+#'         `license` field containing that package's license extracted from its DESCRIPTION file.
 #' 
 #' @examples
 #' \dontrun{
 #' fetch_all_dependencies("ggplot2")
+#' fetch_all_dependencies("ggplot2", get_license = TRUE)
+#' fetch_all_dependencies("ggplot2", max_level = 5)  # Deeper dependency exploration
 #' }
 #'
 #' @export
-fetch_all_dependencies <- function(package_name) {
+fetch_all_dependencies <- function(package_name, get_license = FALSE, max_level = 3) {
+  
+  # Validate parameters and throw errors (not warnings) for fetch_all_dependencies
+  if (!is.numeric(max_level) || length(max_level) != 1 || max_level < 0 || max_level != as.integer(max_level)) {
+    stop("max_level must be a non-negative integer")
+  }
+  
+  if (!is.character(package_name) || length(package_name) != 1 || is.na(package_name) || nchar(trimws(package_name)) == 0) {
+    stop("package_name must be a non-empty character string")
+  }
   
   message("Building dependency tree for: ", package_name, "\n")
   dep_tree <- list()
-  dep_tree[[package_name]] <- build_dependency_tree(package_name)
+  tree_result <- build_dependency_tree(package_name, get_license = get_license, max_level = max_level)
+  
+  # In R, assigning NULL to a list element removes it, so we need to handle this
+  # Store the result, which could be NULL
+  if (!is.null(tree_result)) {
+    dep_tree[[package_name]] <- tree_result
+  }
+  # If NULL, the list will be empty, which is acceptable behavior
   
   return(dep_tree)
 }
@@ -255,17 +389,73 @@ fetch_all_dependencies <- function(package_name) {
 print_tree <- function(tree, prefix = "", last = TRUE, show_version = TRUE) {
   
   if (is.list(tree)) {
-    n <- length(tree)
+    # Filter out metadata fields (version, license) - they're not packages
+    # These should be displayed as part of package info, not as separate entries
+    all_names <- names(tree)
+    metadata_fields <- c("version", "license")
+    pkg_names <- all_names[!all_names %in% metadata_fields]
+    
+    # Check if version/license exist at current level (for root package display)
+    has_version_here <- "version" %in% all_names && !is.list(tree[["version"]])
+    has_license_here <- "license" %in% all_names && !is.list(tree[["license"]])
+    
+    # Special case: if we're at root level (prefix == "") and there are metadata fields
+    # but no package names, this means we're printing a tree that has no root package name
+    # (e.g., result of build_dependency_tree directly). In this case, we should skip printing
+    # and let the caller handle it, OR we could print a summary. But typically this shouldn't happen.
+    
+    n <- length(pkg_names)
+    
+    # If no packages at this level, return early (only metadata)
+    if (n == 0) {
+      return(invisible(NULL))
+    }
+    
     i <- 1
-    for (pkg in names(tree)) {
+    for (pkg in pkg_names) {
       
       # Check if it's a base package
       is_base_pkg <- identical(tree[[pkg]], "base")
       
-      # Extract version 
+      # Extract version - use current level metadata if available (for first package at root), otherwise from subtree
       pkg_version <- ""
-      if (!is_base_pkg && show_version && is.list(tree[[pkg]]) && "version" %in% names(tree[[pkg]])) {
-        pkg_version <- paste0(" (v", tree[[pkg]]$version, ")")
+      if (!is_base_pkg && show_version) {
+        # If we're at root level (prefix == "") and version exists here, use it for first package
+        if (has_version_here && i == 1 && prefix == "") {
+          # This is the first package at root level, use version from current tree metadata
+          pkg_version <- paste0(" (v", tree[["version"]], ")")
+        } else if (is.list(tree[[pkg]]) && "version" %in% names(tree[[pkg]])) {
+          # Check if version is in the package subtree
+          pkg_version <- paste0(" (v", tree[[pkg]]$version, ")")
+        }
+      }
+      
+      # Extract license - use current level metadata if available (for first package at root), otherwise from subtree
+      pkg_license <- ""
+      if (!is_base_pkg) {
+        # First check if license is in the package subtree (most common case)
+        if (is.list(tree[[pkg]]) && "license" %in% names(tree[[pkg]])) {
+          license_val <- tree[[pkg]]$license
+          if (!is.null(license_val) && !is.na(license_val) && license_val != "") {
+            # For root level (prefix == ""), add "license" word, otherwise just the value
+            if (prefix == "") {
+              pkg_license <- paste0(" ", license_val, " license")
+            } else {
+              pkg_license <- paste0(" ", license_val)
+            }
+          }
+        } else if (has_license_here && i == 1 && prefix == "") {
+          # This is the first package at root level, use license from current tree metadata
+          # (for cases where build_dependency_tree result is printed directly)
+          license_val <- tree[["license"]]
+          if (!is.null(license_val) && !is.na(license_val) && license_val != "") {
+            # For root level, add "license" word
+            pkg_license <- paste0(" ", license_val, " license")
+          }
+        }
+      } else if (is_base_pkg) {
+        # Base packages don't have licenses in the tree structure since they're not downloaded
+        pkg_license <- ""
       }
       
       # Append "(base)" for base packages
@@ -273,13 +463,14 @@ print_tree <- function(tree, prefix = "", last = TRUE, show_version = TRUE) {
       
       # Formatting for tree structure using Unicode escapes
       connector <- if (i == n) "\u2514\u2500\u2500 " else "\u251c\u2500\u2500 "
-      cat(prefix, connector, pkg, pkg_version, base_tag, "\n", sep = "")
+      cat(prefix, connector, pkg, pkg_version, base_tag, pkg_license, "\n", sep = "")
       
       # If it's not a base package, recurse into sub-tree
       if (!is_base_pkg) {
         sub_tree <- tree[[pkg]]
         if (is.list(sub_tree)) {
           sub_tree$version <- NULL
+          sub_tree$license <- NULL  # Remove license from sub_tree to avoid duplication
         }
         
         new_prefix <- if (i == n) paste0(prefix, "    ") else paste0(prefix, "\u2502   ")

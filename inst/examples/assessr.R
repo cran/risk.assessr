@@ -1,5 +1,5 @@
 # set up
-repos <- "http://cran.us.r-project.org"
+repos <- "https://rstudio-pm.prod.p488440267176.aws-emea.sanofi.com/prod-cran/__linux__/jammy/latest"
 install.packages('remotes', repos = repos)
 remotes::install_local(repos = repos)
 library(risk.assessr)

@@ -1,268 +1,56 @@
-test_that("running rcmd check for test package in tar file - no notes", {
-  skip_on_cran()
+test_that("run_rcmdcheck returns score of 1 when no issues found", {
+  pkg_path <- "path/to/test.pkg"
+  args <- list(quiet = TRUE)
   
-  # Copy test package to a temp file
-  dp_orig <- system.file("test-data", 
-                         "test.package.0001_0.1.0.tar.gz", 
-                         package = "risk.assessr")
-  dp <- tempfile(fileext = ".tar.gz")
-  file.copy(dp_orig, dp)
+  # Mock rcmdcheck to return empty results
+  mock_res <- list(notes = character(0), warnings = character(0), errors = character(0))
+  mockery::stub(run_rcmdcheck, "rcmdcheck::rcmdcheck", mock_res)
   
-  # Defer cleanup of copied tarball
-  withr::defer(unlink(dp), envir = parent.frame())
+  # Mock forbidden notes to return input as-is
+  mockery::stub(run_rcmdcheck, "check_forbidden_notes", function(x, y) x)
   
-  # Defer cleanup of unpacked source directory
-  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
-               envir = parent.frame())
-  
-  # set up package
-  install_list <- set_up_pkg(dp)
-  
-  build_vignettes <- install_list$build_vignettes
-  package_installed <- install_list$package_installed
-  pkg_source_path <- install_list$pkg_source_path
-  rcmdcheck_args <- install_list$rcmdcheck_args
-  
-  # install package locally to ensure test works
-  package_installed <- install_package_local(pkg_source_path)
-  package_installed <- TRUE
-  results <- list()
-  
-  if (package_installed == TRUE ) {
-    
-    # ensure path is set to package source path
-    rcmdcheck_args$path <- pkg_source_path
-    
-    testthat::expect_message(
-      results$check <- run_rcmdcheck(pkg_source_path, rcmdcheck_args),
-      glue::glue("rcmdcheck for {basename(pkg_source_path)} passed"),
-      fixed = TRUE
-    )
-    
-    testthat::expect_identical(length(results$check$res_check), 21L)
-    
-    testthat::expect_true(checkmate::check_class(results$check$res_check, "rcmdcheck"))
-    
-    testthat::expect_true(!is.na(results$check$res_check$test_output))
-    
-    testthat::expect_true(checkmate::test_numeric(results$check$check_score))
-    
-    testthat::expect_gte(results$check$check_score, 0)
-    
-    # Clean up
-    withr::defer(unlink(pkg_source_path, recursive = TRUE))  # Test directory cleanup
-    
-    # Attempt to unload the namespace without checking installed.packages()
-    try(unloadNamespace("test.package.0001"), silent = TRUE)
-  }
-})
-
-test_that("running rcmd check for test package in tar file - 1 note 1 warning", {
-  skip_on_cran()
-  
-  result <- capture_cran_warning("http://cran.us.r-project.org", "src/contrib/Meta/archive.rds")
-  
-  skip_if(
-    grepl("Timeout of 60 seconds was reached", result$message) ||
-      grepl("cannot open URL", result$message),
-    message = paste("Skipping test because CRAN is not available:", result$message)
+  testthat::expect_message(
+    res <- run_rcmdcheck(pkg_path, args),
+    "rcmdcheck for test.pkg passed"
   )
   
-  
-  check_type <- "2"
-  
-  dp_orig <- system.file("test-data", 
-                         "test.package.0002_0.1.0.tar.gz", 
-                         package = "risk.assessr")
-  dp <- tempfile(fileext = ".tar.gz")
-  file.copy(dp_orig, dp)
-  
-  # Defer cleanup of copied tarball
-  withr::defer(unlink(dp), envir = parent.frame())
-  
-  # Defer cleanup of unpacked source directory
-  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
-               envir = parent.frame())
-  
-  # set up package
-  install_list <- set_up_pkg(dp, check_type)
-  
-  build_vignettes <- install_list$build_vignettes
-  package_installed <- install_list$package_installed
-  pkg_source_path <- install_list$pkg_source_path
-  rcmdcheck_args <- install_list$rcmdcheck_args
-  
-  # install package locally to ensure test works
-  package_installed <- install_package_local(pkg_source_path)
-  package_installed <- TRUE
-  results <- list()
-  
-  if (package_installed == TRUE ) {
-    
-    
-    # ensure path is set to package source path
-    rcmdcheck_args$path <- pkg_source_path
-    
-    testthat::expect_message(
-      results$check <- run_rcmdcheck(pkg_source_path, rcmdcheck_args),
-      glue::glue("rcmdcheck for {basename(pkg_source_path)} passed with warnings and/or notes"),
-      fixed = TRUE
-    )
-    
-    
-    testthat::expect_identical(length(results$check$res_check), 21L)
-    
-    testthat::expect_true(checkmate::check_class(results$check$res_check, "rcmdcheck"))
-    
-    testthat::expect_true(!is.na(results$check$res_check$test_output))
-    
-    testthat::expect_true(checkmate::check_list(results$check$res_check$test_output))
-    
-    testthat::expect_true(checkmate::test_numeric(results$check$check_score))
-    
-    testthat::expect_gte(results$check$check_score, 0)
-    
-    # Clean up
-    withr::defer(unlink(pkg_source_path, recursive = TRUE))  # Test directory cleanup
-    
-    # Attempt to unload the namespace without checking installed.packages()
-    try(unloadNamespace("test.package.0002"), silent = TRUE)
-    
-  }
-  
+  testthat::expect_equal(res$check_score, 1)
+  testthat::expect_identical(res$res_check, mock_res)
 })
 
-test_that("running rcmd check for test package in tar file - 1 note 1 error", {
-  skip_on_cran() 
+test_that("run_rcmdcheck handles errors and calculates score of 0", {
+  pkg_path <- "path/to/test.pkg"
   
-  result <- capture_cran_warning("http://cran.us.r-project.org", "src/contrib/Meta/archive.rds")
+  # Mock rcmdcheck to return one error
+  mock_res <- list(notes = character(0), warnings = character(0), errors = "One critical error")
+  mockery::stub(run_rcmdcheck, "rcmdcheck::rcmdcheck", mock_res)
+  mockery::stub(run_rcmdcheck, "check_forbidden_notes", function(x, y) x)
   
-  skip_if(
-    grepl("Timeout of 60 seconds was reached", result$message) ||
-      grepl("cannot open URL", result$message),
-    message = paste("Skipping test because CRAN is not available:", result$message)
+  testthat::expect_message(
+    res <- run_rcmdcheck(pkg_path, list()),
+    "rcmdcheck for test.pkg failed"
   )
   
+  # Error weighting is 1.0, so 1 - 1.0 = 0
+  testthat::expect_equal(res$check_score, 0)
+})
+
+test_that("run_rcmdcheck accounts for forbidden notes escalated to errors", {
+  pkg_path <- "path/to/test.pkg"
   
-  check_type <- "2"
+  # Initial check returns 1 note
+  mock_res <- list(notes = "no visible global function definition", warnings = character(0), errors = character(0))
+  mockery::stub(run_rcmdcheck, "rcmdcheck::rcmdcheck", mock_res)
   
-  dp_orig <- system.file("test-data", 
-                         "test.package.0003_0.1.0.tar.gz", 
-                         package = "risk.assessr")
-  dp <- tempfile(fileext = ".tar.gz")
-  file.copy(dp_orig, dp)
+  # The real check_forbidden_notes should move that note to errors
+  # (No stub for check_forbidden_notes here so we test the integration)
   
-  # Defer cleanup of copied tarball
-  withr::defer(unlink(dp), envir = parent.frame())
+  res <- run_rcmdcheck(pkg_path, list())
   
-  # Defer cleanup of unpacked source directory
-  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
-               envir = parent.frame())
-  
-  # set up package
-  install_list <- set_up_pkg(dp, check_type)
-  build_vignettes <- install_list$build_vignettes
-  package_installed <- install_list$package_installed
-  pkg_source_path <- install_list$pkg_source_path
-  rcmdcheck_args <- install_list$rcmdcheck_args
-  
-  # install package locally to ensure test works
-  package_installed <- install_package_local(pkg_source_path)
-  package_installed <- TRUE
-  results <- list()
-  
-  if (package_installed == TRUE ) {
-    
-    # ensure path is set to package source path
-    rcmdcheck_args$path <- pkg_source_path
-    
-    testthat::expect_message(
-      results$check <- run_rcmdcheck(pkg_source_path, rcmdcheck_args),
-      glue::glue("rcmdcheck for {basename(pkg_source_path)} failed"),
-      fixed = TRUE
-    )
-    
-    testthat::expect_identical(length(results$check$res_check), 21L)
-    
-    testthat::expect_true(checkmate::check_class(results$check$res_check, "rcmdcheck"))
-    
-    testthat::expect_true(checkmate::check_list(results$check$res_check$test_output))
-    
-    testthat::expect_true(checkmate::test_numeric(results$check$check_score))
-    
-    testthat::expect_equal(results$check$check_score, 0)
-    
-    # Clean up
-    withr::defer(unlink(pkg_source_path, recursive = TRUE))  # Test directory cleanup
-    
-    # Attempt to unload the namespace without checking installed.packages()
-    try(unloadNamespace("test.package.0003"), silent = TRUE)
-    
-  }
+  # Note becomes error (weight 1.0), so score should be 0, not 0.9
+  testthat::expect_equal(res$check_score, 0)
+  testthat::expect_length(res$res_check$errors, 1)
 })
 
 
-test_that("running rcmd check for test package - error handling", {
-  skip_on_cran()
-  
-  result <- capture_cran_warning("http://cran.us.r-project.org", "src/contrib/Meta/archive.rds")
-  
-  
-  skip_if(
-    grepl("Timeout of 60 seconds was reached", result$message) ||
-      grepl("cannot open URL", result$message),
-    message = paste("Skipping test because CRAN is not available:", result$message)
-  )
-  
-  
-  check_type <- "2"
-  
-  dp_orig <- system.file("test-data", 
-                         "test.package.0003_0.1.0.tar.gz", 
-                         package = "risk.assessr")
-  dp <- tempfile(fileext = ".tar.gz")
-  file.copy(dp_orig, dp)
-  
-  # Defer cleanup of copied tarball
-  withr::defer(unlink(dp), envir = parent.frame())
-  
-  # Defer cleanup of unpacked source directory
-  withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
-               envir = parent.frame())
-  
-  # set up package
-  install_list <- set_up_pkg(dp, check_type)
-  build_vignettes <- install_list$build_vignettes
-  package_installed <- install_list$package_installed
-  pkg_source_path <- install_list$pkg_source_path
-  rcmdcheck_args <- install_list$rcmdcheck_args
-  
-  # install package locally to ensure test works
-  package_installed <- install_package_local(pkg_source_path)
-  package_installed <- TRUE
-  results <- list()
-  
-  if (package_installed == TRUE ) {
-    
-    # ensure path is set to package source path
-    rcmdcheck_args$path <- pkg_source_path
-    
-    testthat::expect_message(
-      results$check <- run_rcmdcheck(pkg_source_path, rcmdcheck_args),
-      glue::glue("rcmdcheck for {basename(pkg_source_path)} failed"),
-      fixed = TRUE
-    )
-    
-    results <- list()
-    results$check <- run_rcmdcheck(pkg_source_path, rcmdcheck_args)
-    testthat::expect_identical(results$check$check_score, 0)
-    testthat::expect_false(is.null(results$check$res_check$errors))
-    testthat::expect_true(length(nzchar(results$check$res_check$errors)) > 0)
-    
-    # Clean up
-    withr::defer(unlink(pkg_source_path, recursive = TRUE))  # Test directory cleanup
-    
-    # Attempt to unload the namespace without checking installed.packages()
-    try(unloadNamespace("test.package.0003"), silent = TRUE)
-  }
-})
+

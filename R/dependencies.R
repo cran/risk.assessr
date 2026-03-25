@@ -71,34 +71,6 @@ get_dependencies <- function(pkg_source_path) {
 }
 
 
-#' Get reverse dependencies
-#'
-#' @param pkg_source_path package source path
-#' @keywords internal
-get_reverse_dependencies <- function(pkg_source_path) {
-  
-  pkg_name <- basename(pkg_source_path)
-  
-  #extract package name without version to pass to the revdep function
-  name <- stringr::str_extract(pkg_name, "[^_|-]+")
-  message(glue::glue("getting reverse dependencies for {pkg_name}"))
-  rev_deps <- find_reverse_dependencies(name)
-  message(glue::glue("reverse dependencies successful for {pkg_name}"))
-  
-  return(rev_deps)
-}
-
-#' find reverse dependencies
-#'
-#' @param path pkg_ref path
-#' 
-#' @keywords internal
-find_reverse_dependencies <- function(path){
-  
-  rev_deps <- cran_revdep(path)
-  return(rev_deps)
-}
-
 #' Find Reverse Dependencies of a CRAN Package
 #'
 #' This function finds the reverse dependencies of a CRAN package, i.e., packages that depend on the specified package.

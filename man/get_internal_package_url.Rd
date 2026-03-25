@@ -22,7 +22,7 @@ A list containing:
   - `all_versions`: A list of all available versions, each as a list with `version` and `date`.
 }
 \description{
-This function retrieves the URL of an internal package on Mirror, its latest version, 
+This function retrieves the URL of an internal package on Sanofi Mirror, its latest version, 
 and a list of all available versions.
 }
 \examples{

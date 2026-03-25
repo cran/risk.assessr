@@ -81,6 +81,8 @@ assess_pkg <- function(
   results$has_bug_reports_url <- doc_scores$has_bug_reports_url
   results$license <- doc_scores$license
   results$has_examples <- doc_scores$has_examples
+  results$has_docs <- doc_scores$has_docs
+  results$has_ex_docs_score <- doc_scores$has_ex_docs_score
   results$has_maintainer <- doc_scores$has_maintainer
   results$size_codebase <- doc_scores$size_codebase 
   results$has_news <- doc_scores$has_news
@@ -93,29 +95,8 @@ assess_pkg <- function(
   test_pkg_data <- check_pkg_tests_and_snaps(pkg_source_path)
   results$tests <- test_pkg_data
   
-  if (test_pkg_data$has_testthat || test_pkg_data$has_testit) {
-    
-    covr_list <- run_coverage(
-      pkg_source_path,  
-      covr_timeout
-    )    
-  } else {
-    message("No testthat or testit configuration")
-    covr_list <- list(
-      total_cov = 0,
-      res_cov = list(
-        name = pkg_name,
-        coverage = list(
-          filecoverage = matrix(0, nrow = 1, dimnames = list("No functions tested")),
-          totalcoverage = 0
-        ),
-        errors = "No testthat or testit configuration",
-        notes = NA
-      )
-    )
-    
-  }
-    
+  covr_list <- run_covr_modes(pkg_source_path)
+  
   # add total coverage to results
   results$covr <- covr_list$total_cov
   
@@ -137,26 +118,34 @@ assess_pkg <- function(
   
   deps <- get_dependencies(pkg_source_path)
   
-  # tryCatch to allow for continued processing of risk metric data
+  # add suggested dependencies to results
+  fallback_suggested_deps <- data.frame(
+    source             = pkg_name,
+    suggested_function = NA_character_,
+    message            = "Error in checking suggested functions",
+    where              = NA_character_,
+    stringsAsFactors   = FALSE
+  )
+  
   results$suggested_deps <- tryCatch(
-    withCallingHandlers(
-      check_suggested_exp_funcs(pkg_name, pkg_source_path, deps),
-      error = function(e) {
-        results$suggested_deps <<- rbind(results$suggested_deps, data.frame(
-          source = pkg_name,
-          function_type = "Unknown",
-          suggested_function = "Error in checking suggested functions",
-          where = NA,
-          stringsAsFactors = FALSE
-        ))
-        invokeRestart("muffleError")
+    {
+      out <- check_suggested_exp_funcs(pkg_name, pkg_source_path, deps)
+      # Normalize to a data.frame
+      if (is.null(out)) {
+        fallback_suggested_deps
+      } else if (is.data.frame(out)) {
+        out
+      } else {
+        # Coerce or fallback if the helper returns another type
+        fallback_suggested_deps
       }
-    ),
+    },
     error = function(e) {
-      message("An error occurred in checking suggested functions: ", e$message)
-      NULL
+      message("An error occurred in checking suggested functions: ", conditionMessage(e))
+      fallback_suggested_deps
     }
   )
+  
   
   results$export_calc <- assess_exports(pkg_source_path)
 
@@ -168,7 +157,7 @@ assess_pkg <- function(
   results$author <- pkg_author
   
   # license
-  pkg_license <- get_pkg_license(pkg_name, pkg_source_path)
+  pkg_license <- extract_license_from_description(pkg_source_path)
   results$license_name <- pkg_license
   
   # get host repo
@@ -198,8 +187,8 @@ assess_pkg <- function(
     version_info <- list("all_versions" = result_cran$all_versions,
                           "last_version" =  result_cran$last_version)
     
-    revdeps_list <- get_reverse_dependencies(pkg_source_path)
-    results$rev_deps <- revdeps_list
+
+    results$rev_deps <-  cran_revdep(pkg_name) 
         
   } else if (!is.null(pkg_host$bioconductor_links)) {
     

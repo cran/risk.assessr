@@ -185,8 +185,15 @@ create_traceability_matrix <- function(pkg_name,
       
       if (cl_exists == TRUE) {  
         
-        func_coverage <- func_coverage |> dplyr::rename(code_script = Var1, 
-                                                        coverage_percent = Freq)
+        #Step 1: Strip temp path prefix if Var1 contains full paths
+        if (any(grepl("^(/|[A-Za-z]:)", func_coverage$Var1))) {
+          func_coverage$Var1 <- sub(glue::glue("^/tmp/.+?/{pkg_name}/"), "", func_coverage$Var1)
+        }
+        
+        # Step 2: Rename columns
+        func_coverage <- func_coverage %>%
+          rename(code_script = Var1, coverage_percent = Freq)
+        
         
         # create total traceability matrix
         tm <- dplyr::left_join(exports_df, 
@@ -422,7 +429,7 @@ fine_grained_tms <- function(tm, pkg_name) {
     
     # create high risk coverage tm 
     high_risk_coverage_tm <- tm |> 
-      dplyr::filter(coverage_percent <= 60) 
+      dplyr::filter(coverage_percent <= 60 | is.na(coverage_percent)) 
     if (nrow(high_risk_coverage_tm) == 0) {
       high_risk_coverage_tm <- create_empty_tm(pkg_name)
       message(glue::glue("high risk coverage traceability matrix for {pkg_name} not generated"))

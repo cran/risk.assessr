@@ -357,7 +357,21 @@ Bioconductor package</h1>
 <div id="bioconductor-download" class="section level2">
 <h2>Bioconductor download</h2>
 <div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>download_bio_df <span class="ot">&lt;-</span> <span class="fu">get_package_download_bioconductor</span>(<span class="st">&quot;limma&quot;</span>)</span>
-<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="fu">head</span>(download_bio_df<span class="sc">$</span>all_data)</span></code></pre></div>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="fu">head</span>(download_bio_df<span class="sc">$</span>all_data)</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a><span class="co">#&gt;         Date Year Month Nb_of_distinct_IPs Nb_of_downloads Cumulative_downloads</span></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co">#&gt; 1 2009-01-01 2009   Jan               3341            7053                 7053</span></span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a><span class="co">#&gt; 2 2009-02-01 2009   Feb               3229            6681                13734</span></span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a><span class="co">#&gt; 3 2009-03-01 2009   Mar               3753            8021                21755</span></span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a><span class="co">#&gt; 4 2009-04-01 2009   Apr               4025            8583                30338</span></span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a><span class="co">#&gt; 5 2009-05-01 2009   May               3476            7524                37862</span></span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a><span class="co">#&gt; 6 2009-06-01 2009   Jun               3763            7725                45587</span></span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a><span class="co">#&gt;   Cumulative_IPs</span></span>
+<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a><span class="co">#&gt; 1           3341</span></span>
+<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a><span class="co">#&gt; 2           6570</span></span>
+<span id="cb5-13"><a href="#cb5-13" tabindex="-1"></a><span class="co">#&gt; 3          10323</span></span>
+<span id="cb5-14"><a href="#cb5-14" tabindex="-1"></a><span class="co">#&gt; 4          14348</span></span>
+<span id="cb5-15"><a href="#cb5-15" tabindex="-1"></a><span class="co">#&gt; 5          17824</span></span>
+<span id="cb5-16"><a href="#cb5-16" tabindex="-1"></a><span class="co">#&gt; 6          21587</span></span></code></pre></div>
 <div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>download_bio_df <span class="ot">&lt;-</span> <span class="fu">get_package_download_bioconductor</span>(<span class="st">&quot;DESeq2&quot;</span>)</span>
 <span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="fu">head</span>(download_bio_df<span class="sc">$</span>all_data)</span></code></pre></div>
 </div>

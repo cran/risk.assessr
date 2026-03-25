@@ -203,6 +203,9 @@ test_that("running tm for created package in tar file with no R directory", {
   
 })
 
+# The following test will be reactivated when 
+# https://github.com/Sanofi-GitHub/bp-art-sanofi.risk.assessr/issues/78 is fixed
+
 test_that("running tm for created package in tar file with empty R directory", {
   skip_on_cran()
   

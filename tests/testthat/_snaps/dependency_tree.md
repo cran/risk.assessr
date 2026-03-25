@@ -3,15 +3,13 @@
     Code
       print_tree(here, show_version = TRUE)
     Output
-      ├── version
-      └── rprojroot (v2.0.4)
+      └── rprojroot (v1.0.1)
 
 # here package - no versions
 
     Code
       print_tree(here, show_version = FALSE)
     Output
-      ├── version
       └── rprojroot
 
 # stringr package
@@ -19,8 +17,7 @@
     Code
       print_tree(stringr, show_version = TRUE)
     Output
-      ├── version
-      ├── cli (v3.6.2)
+      ├── cli (v1.5.1)
       │   └── utils (base)
       ├── glue (v1.7.0)
       │   └── methods (base)
@@ -52,7 +49,6 @@
     Code
       print_tree(stringr, show_version = FALSE)
     Output
-      ├── version
       ├── cli
       │   └── utils (base)
       ├── glue
@@ -78,5 +74,14 @@
           │   └── methods (base)
           ├── lifecycle
           └── rlang
+              └── utils (base)
+
+# print_tree with licenses matches snapshot
+
+    Code
+      print_tree(test_tree, show_version = TRUE)
+    Output
+      └── stringr (v1.5.1) MIT + file LICENSE license
+          └── cli (v3.6.2) MIT + file LICENSE
               └── utils (base)
 

@@ -1,7 +1,7 @@
 test_that("parse deps for tar file works correctly", {
   skip_on_cran()
   
-  # Set CRAN repo
+  # Keep the existing CRAN repo setup (harmless here)
   r <- getOption("repos")
   r["CRAN"] <- "http://cran.us.r-project.org"
   options(repos = r)
@@ -10,20 +10,39 @@ test_that("parse deps for tar file works correctly", {
                     package = "risk.assessr")
   
   install_list <- set_up_pkg(dp)
-  
-  build_vignettes <- install_list$build_vignettes
   package_installed <- install_list$package_installed
-  pkg_source_path <- install_list$pkg_source_path
-  rcmdcheck_args <- install_list$rcmdcheck_args
+  pkg_source_path   <- install_list$pkg_source_path
   
-  # Only proceed if package is installed
   if (package_installed == TRUE) {
+    # --- derive the package name from the tarball path (no stringr needed)
+    pkg_tar   <- basename(pkg_source_path)             # e.g. "here-1.0.1.tar.gz"
+    pkg_name0 <- sub("\\.tar\\.gz$", "", pkg_tar)      # "here-1.0.1"
+    pkg_name  <- sub("[_|-].*$", "", pkg_name0)        # "here"
     
-    mock_revdeps <- c("pkgA", "pkgB", "pkgC")
-    mockery::stub(get_reverse_dependencies,"find_reverse_dependencies", mock_revdeps)
+    # --- fake CRAN index (like utils::available.packages())
+    # columns must include dependency fields used by dependsOnPkgs()
+    fake <- matrix(
+      c(
+        "pkgA","here", "",    "",      "",
+        "pkgB","",     "here","",      "",
+        "pkgC","",     "",    "here",  "",
+        "here","R",    "",    "",      ""
+      ),
+      ncol = 5, byrow = TRUE,
+      dimnames = list(NULL, c("Package","Depends","Imports","Suggests","LinkingTo"))
+    )
+    rownames(fake) <- fake[, "Package"]
     
-    revdeps_list <- suppressWarnings(get_reverse_dependencies(pkg_source_path))
+    # --- call the new API directly; no network, no stubs
+    revdeps_list <- cran_revdep(
+      pkg_name,
+      dependencies = c("Depends","Imports","Suggests","LinkingTo"),
+      recursive = FALSE,
+      installed = fake
+    )
+    
     expect_identical(length(revdeps_list), 3L)
     checkmate::assert_character(revdeps_list, any.missing = FALSE)
+    expect_setequal(revdeps_list, c("pkgA","pkgB","pkgC"))
   }
 })

@@ -1,3 +1,16 @@
+# risk.assessr 3.1.0
+
+## New Features
+
+ - improved assessment of documentation and examples
+ 
+ - summary decision report for validation process
+ 
+ - refactor fetching source files
+ 
+ - updated stringr and kableExtra versions
+ 
+
 # risk.assessr 3.0.1
 
 ## New Features

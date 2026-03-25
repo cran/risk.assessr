@@ -26,8 +26,10 @@ normalize_data <- function(results) {
     has_website         = pluck(results, "has_website",         .default = NULL),
     has_vignettes       = pluck(results, "has_vignettes",       .default = NULL),
     has_examples        = pluck(results, "has_examples",        .default = NULL),
+    has_docs            = pluck(results, "has_docs",            .default = NULL),  
     has_news            = pluck(results, "has_news",            .default = NULL),
-
+    has_ex_docs_score   = as.numeric(pluck(results, "has_ex_docs_score", .default = NA_real_)),
+    
     code_coverage = pluck(results, "covr", .default = 0),
     cmd_check = pluck(results, "check", .default = 0),
     
@@ -64,7 +66,6 @@ extract_risk_inputs <- function(flat_data) {
     }
     1L                                         
   }, integer(1L)))
-  
   
   all_versions <- flat_data$all_versions
   current_version <- flat_data$version
@@ -193,6 +194,23 @@ compute_risk <- function(value, risk) {
 #'   license = "MIT",
 #'   reverse_dependencies_count = 10,
 #'   documentation_score = 2,
+#'   has_examples = list(
+#'     data = data.frame(
+#'       function_name          = "somefunction",
+#'       documentation_name     = "No documentation found",
+#'       documentation_location = 0,
+#'       example                = "no Rd file",
+#'       stringsAsFactors       = FALSE
+#'     ),
+#'     example_score = 0.20   
+#'   ),
+#'   has_docs = list(
+#'     data = data.frame(
+#'       function_name    = "somefunction",
+#'       stringsAsFactors = FALSE
+#'     ),
+#'     has_docs_score = 0.30  
+#'   ),
 #'   cmd_check = 0
 #' )
 #'

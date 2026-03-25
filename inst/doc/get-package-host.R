@@ -77,3 +77,6 @@ library(risk.assessr)
 # 
 # github_links
 
+## -----------------------------------------------------------------------------
+tarball_path <- get_package_tarfile("dplyr", version = "1.0.0")
+

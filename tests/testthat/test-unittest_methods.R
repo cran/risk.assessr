@@ -1,5 +1,3 @@
-# testthat
-
 test_that("check_pkg_tests_and_snaps works as expected", {
   # Create a temp directory to act as our package
   pkg_dir <- tempfile("dummyPkg")
@@ -140,6 +138,42 @@ test_that("detects testit framework presence", {
   unlink(pkg_dir, recursive = TRUE)
 })
 
+
+test_that("get_test_path returns correct paths based on test_pkg_data", {
+  testdir <- tempfile()
+  dir.create(testdir)
+  
+  # Create dummy subdirectories
+  dir.create(file.path(testdir, "testthat"))
+  dir.create(file.path(testdir, "testit"))
+  dir.create(file.path(testdir, "test-ci"))
+  dir.create(file.path(testdir, "test-cran"))
+  
+  # Case: has_testthat
+  test_pkg_data <- list(has_testthat = TRUE, has_testit = FALSE, has_tests_base = FALSE)
+  expect_equal(get_test_path(test_pkg_data, testdir), file.path(testdir, "testthat"))
+  
+  # Case: has_testit
+  test_pkg_data <- list(has_testthat = FALSE, has_testit = TRUE, has_tests_base = FALSE)
+  expect_equal(get_test_path(test_pkg_data, testdir), file.path(testdir, "testit"))
+  
+  # Case: fallback for nonstandard testit
+  test_pkg_data <- list(has_testthat = FALSE, has_testit = FALSE, has_tests_base = FALSE)
+  expect_equal(get_test_path(test_pkg_data, testdir), testdir)
+  
+  # Case: has_tests_base
+  unlink(file.path(testdir, "test-ci"), recursive = TRUE)
+  unlink(file.path(testdir, "test-cran"), recursive = TRUE)
+  test_pkg_data <- list(has_testthat = FALSE, has_testit = FALSE, has_tests_base = TRUE)
+  expect_equal(get_test_path(test_pkg_data, testdir), testdir)
+  
+  # Case: no known test framework
+  test_pkg_data <- list(has_testthat = FALSE, has_testit = FALSE, has_tests_base = FALSE)
+  expect_null(get_test_path(test_pkg_data, testdir))
+  
+  # Cleanup
+  unlink(testdir, recursive = TRUE)
+})
 
 
 

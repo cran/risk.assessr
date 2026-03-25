@@ -26,7 +26,6 @@ suppressWarnings({
 # head(download_cran_df)
 
 ## ----echo=FALSE, cran-data-viz, eval=FALSE------------------------------------
-# 
 # monthly_downloads <- download_cran_df %>%
 #   mutate(month = format(date, "%Y-%m")) %>%
 #   group_by(month) %>%
@@ -94,9 +93,9 @@ suppressWarnings({
 #     axis.text.x = element_text(angle = 45, hjust = 1)
 #   )
 
-## ----eval=FALSE---------------------------------------------------------------
-# download_bio_df <- get_package_download_bioconductor("limma")
-# head(download_bio_df$all_data)
+## -----------------------------------------------------------------------------
+download_bio_df <- get_package_download_bioconductor("limma")
+head(download_bio_df$all_data)
 
 ## ----echo=FALSE, message=FALSE, eval=FALSE------------------------------------
 # html_content <- fetch_bioconductor_releases()
