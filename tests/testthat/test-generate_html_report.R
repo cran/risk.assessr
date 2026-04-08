@@ -76,7 +76,6 @@ toy_assessment_results <- list(
     dep_score = 0.000203,
     rev_deps = logical(0),
     revdep_score = 0.0966,
-    overall_risk_score = 0.577,
     risk_profile = "High",
     license_name = "MIT + file LICENSE"
   ),

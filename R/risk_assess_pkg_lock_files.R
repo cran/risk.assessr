@@ -7,6 +7,7 @@
 #'
 #' @return assessment_results - nested list containing risk metric data
 #'
+#' @importFrom jsonlite fromJSON
 #' @importFrom stats setNames
 #'
 #' @examples
@@ -53,7 +54,10 @@ risk_assess_pkg_lock_files <- function(input_data) {
       pkg_version <- pkg_info$Version
     }  
     
-    risk_assess_package <- risk.assessr::assess_pkg_r_package(pkg_name, pkg_version)
+    risk_assess_package <- risk.assessr::risk_assess_pkg(
+      package = pkg_name,
+      version = pkg_version
+    )
     return(list(name = pkg_name, version = pkg_version, result = risk_assess_package))
   }
   

@@ -87,4 +87,3 @@ Detect version conflicts in your dependency tree:
 detect_version_conflicts(dep_data)
 ```
 
-

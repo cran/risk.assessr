@@ -90,4 +90,3 @@ ggplot(citation_data, aes(x = Year, y = Count)) +
 
 
 
-

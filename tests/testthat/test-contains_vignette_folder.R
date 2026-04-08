@@ -57,4 +57,3 @@ test_that("test on package with vignette folder but no .rmd file", {
 
 
 
-

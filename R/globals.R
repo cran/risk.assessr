@@ -29,7 +29,6 @@ globalVariables(c(
                   "link_count",
                   "matched",
                   "name",
-                  "overall_risk_score",
                   "package",
                   "package_name",
                   "pkg_name",

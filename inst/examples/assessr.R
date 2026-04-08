@@ -1,5 +1,5 @@
 # set up
-repos <- "https://rstudio-pm.prod.p488440267176.aws-emea.sanofi.com/prod-cran/__linux__/jammy/latest"
+repos <- "https://packagemanager.posit.co/cran/__linux__/jammy/latest"
 install.packages('remotes', repos = repos)
 remotes::install_local(repos = repos)
 library(risk.assessr)
@@ -14,6 +14,6 @@ target_dir <- file.path(output_path, pkg$name, pkg$version)
 dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
 
 # assess
-options(repos='http://cran.us.r-project.org')
+options(repos='https://cloud.r-project.org')
 risk.assessr::assess_pkg_r_package(pkg$name, pkg$version) |>
   jsonlite::write_json(file.path(target_dir, "assessr.json"), force=TRUE, auto_unbox=TRUE)

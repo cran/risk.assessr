@@ -11,19 +11,17 @@ test_that("running risk_assess_pkg_lock_files with tar file", {
   
 })
 
-# Mock the assess_pkg_r_package function
-mock_assess_pkg_r_package <- function(pkg_name, pkg_version) {
+# Mock the risk_assess_pkg function (used when processing lock file packages)
+mock_risk_assess_pkg <- function(path = NULL, package = NULL, version = NA, repos = getOption("repos")) {
   list(
-    pkg_name = pkg_name,
-    pkg_version = pkg_version,
-    overall_risk_score = 0.3,
+    pkg_name = package,
+    pkg_version = version,
     risk_profile = "Medium"
   )
 }
 
 test_that("risk_assess_pkg_lock_files processes renv.lock correctly", {
-  # Mock the risk.assessr::assess_pkg_r_package function
-  mockery::stub(risk_assess_pkg_lock_files, "risk.assessr::assess_pkg_r_package", mock_assess_pkg_r_package)
+  mockery::stub(risk_assess_pkg_lock_files, "risk.assessr::risk_assess_pkg", mock_risk_assess_pkg)
   
   # Create a temporary .lock file
   temp_lock_file <- tempfile(fileext = ".lock")
@@ -70,8 +68,7 @@ test_that("risk_assess_pkg_lock_files processes renv.lock correctly", {
 })
 
 test_that("risk_assess_pkg_lock_files processes pak.lock correctly", {
-  # Mock the risk.assessr::assess_pkg_r_package function
-  mockery::stub(risk_assess_pkg_lock_files, "risk.assessr::assess_pkg_r_package", mock_assess_pkg_r_package)
+  mockery::stub(risk_assess_pkg_lock_files, "risk.assessr::risk_assess_pkg", mock_risk_assess_pkg)
   
   # Create a temporary .lock file with pak.lock format
   temp_lock_file <- tempfile(fileext = ".lock")

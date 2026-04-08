@@ -125,7 +125,7 @@ get_internal_package_url <- function(package_name, version = NULL,
   
   if (!is.null(found_data$version) && !is.null(found_data$date_publication)) {
     last_version <- list(
-      version = found_data$version,
+      version = as.character(found_data$version)[1L],  # JSON may return non-atomic
       date = as.Date(substr(found_data$date_publication, 1, 10))
     )
     all_versions[[length(all_versions) + 1]] <- last_version
@@ -134,14 +134,14 @@ get_internal_package_url <- function(package_name, version = NULL,
   if (!is.null(found_data$archived)) {
     if (is.data.frame(found_data$archived)) {
       for (i in seq_len(nrow(found_data$archived))) {
-        ver <- found_data$archived$version[i]
+        ver <- as.character(found_data$archived$version[i])[1L]
         date <- as.Date(substr(found_data$archived$date[i], 1, 10))
         all_versions[[length(all_versions) + 1]] <- list(version = ver, date = date)
       }
     } else if (is.list(found_data$archived)) {
       for (av in found_data$archived) {
         if (!is.null(av$version) && !is.null(av$date)) {
-          ver <- av$version
+          ver <- as.character(av$version)[1L]
           date <- as.Date(substr(av$date, 1, 10))
           all_versions[[length(all_versions) + 1]] <- list(version = ver, date = date)
         }
@@ -149,20 +149,21 @@ get_internal_package_url <- function(package_name, version = NULL,
     }
   }
   
-  # Determine the URL for the chosen version
+  # Determine the URL for the chosen version (coerce to scalar character; JSON may return list/vector)
   chosen_version <- if (is.null(version)) last_version$version else version
+  chosen_version <- as.character(chosen_version)[1L]
+  last_ver_char <- if (!is.null(last_version)) as.character(last_version$version)[1L] else NA_character_
   url <- NULL
-  
-  # Construct the URL based on repository name and version
-  if (!is.null(chosen_version)) {
-    if (!is.null(last_version) && chosen_version == last_version$version) {
+
+  if (!is.na(chosen_version) && nzchar(chosen_version)) {
+    if (!is.na(last_ver_char) && chosen_version == last_ver_char) {
       # Latest version URL
       url <- paste0(base_url, "/", found_repo_name, "/latest/src/contrib/", 
                     package_name, "_", chosen_version, ".tar.gz")
     } else {
       # Archived version URL
-      version_list <- sapply(all_versions, function(x) x$version)
-      if (!is.null(version_list) && chosen_version %in% version_list) {
+      version_list <- vapply(all_versions, function(x) as.character(x$version)[1L], character(1L))
+      if (length(version_list) > 0L && chosen_version %in% version_list) {
         url <- paste0(base_url, "/", found_repo_name, "/latest/src/contrib/Archive/", 
                       package_name, "/", package_name, "_", chosen_version, ".tar.gz")
       }
@@ -401,7 +402,7 @@ get_versions <- function(table, package_name) {
     data <- jsonlite::fromJSON(rawToChar(response$content))
     if (!is.null(data$version) && !is.null(data$date_publication)) {
       last_version <- list(
-        version = data$version,
+        version = as.character(data$version),  # JSON may return numeric
         date = as_iso_date(substr(data$date_publication, 1, 10))
       )
       existing_versions <- sapply(all_versions, function(x) x$version)
@@ -462,7 +463,7 @@ check_and_fetch_cran_package <- function(package_name, package_version = NULL) {
   html <- parse_package_info(package_name)
   table <- if (!is.null(html)) parse_html_version(html, package_name) else NULL
   versions <- get_versions(table, package_name)
-  
+
   url <- get_cran_package_url(package_name, package_version, versions$last_version, versions$all_versions)
   
   # Ensure all dates are ISO strings
@@ -521,18 +522,41 @@ check_and_fetch_cran_package <- function(package_name, package_version = NULL) {
 #' }
 #' @export
 get_cran_package_url <- function(package_name, version, last_version, all_versions) {
-  # Extract just the version strings from the all_versions list
-  version_list <- sapply(all_versions, function(x) x$version)
-  
-  # Set version to the latest version if not provided
-  if (is.null(version)) {
-    version <- last_version$version
+  if (is.null(all_versions)) {
+    all_versions <- list()
+  } else {
+    all_versions <- all_versions[!vapply(all_versions, is.null, logical(1L))]
   }
-  
+  if (length(all_versions) == 0L && is.null(last_version)) {
+    return("No valid URL found")
+  }
+  # Extract version strings and coerce to character for consistent comparison
+  # (JSON/Posit API may return numeric, e.g. 1.02 instead of "1.0.2")
+  version_list <- if (length(all_versions) > 0L) {
+    vapply(all_versions, function(x) as.character(x$version), character(1L))
+  } else {
+    character(0L)
+  }
+
+  # Set version to the latest if not provided
+  if (is.null(version)) {
+    if (!is.null(last_version)) {
+      version <- as.character(last_version$version)
+    } else if (length(version_list) > 0L) {
+      # Posit API unreachable: use most recent version from Archive
+      version <- version_list[which.max(numeric_version(version_list, strict = FALSE))]
+    } else {
+      return("No valid URL found")
+    }
+  } else {
+    version <- as.character(version)
+  }
+
   # Check if the version exists in version_list
   if (version %in% version_list) {
-    # If it's the latest version
-    if (!is.null(last_version) && version == last_version$version) {
+    # If it's the latest version (main contrib vs Archive)
+    last_ver_char <- if (!is.null(last_version)) as.character(last_version$version) else NA_character_
+    if (!is.na(last_ver_char) && version == last_ver_char) {
       return(paste0("https://cran.r-project.org/src/contrib/", package_name, "_", version, ".tar.gz"))
     }
     
@@ -615,6 +639,7 @@ get_host_package <- function(pkg_name, pkg_version, pkg_source_path) {
   if (is_package_valid) {
     # Fetch the archive content
     result_cran <- check_and_fetch_cran_package(pkg_name, pkg_version)  
+    
     # get CRAN links
     cran_links <- get_cran_package_url(pkg_name, pkg_version, result_cran$last_version, result_cran$all_versions)
     
@@ -678,25 +703,49 @@ get_host_package <- function(pkg_name, pkg_version, pkg_source_path) {
 #' tarball_path <- get_package_tarfile("dplyr", repos = "https://cloud.r-project.org")
 #' }
 #'
+#' @importFrom remotes download_version
 #' @export
 get_package_tarfile <- function(package_name, version = NULL, repos = getOption("repos")) {
-  
+
   download_successful <- FALSE
-  message(paste("Checking", package_name, "on CRAN..."))
-  
   temp_file <- NULL
-  
-  # Try CRAN first
-  if (check_cran_package(package_name)) {
-    temp_file <- tempfile(fileext = ".tar.gz")
-    
+
+  # Try configured repos first (RSPM, CRAN mirror, etc.)
+  repos_usable <- !is.null(repos) && length(repos) > 0L &&
+    !all(repos %in% c("@CRAN@", NA_character_))
+  if (repos_usable) {
+    message(paste("Checking", package_name, "in configured repositories..."))
     tryCatch({
-      result_cran <- check_and_fetch_cran_package(package_name = package_name, package_version = version)
-      download.file(url = result_cran$package_url, destfile = temp_file, mode = "wb")
+      temp_file <- remotes::download_version(
+        package = package_name,
+        version = version,
+        repos = repos,
+        type = "source"
+      )
       download_successful <- TRUE
     }, error = function(e) {
-      message(paste("CRAN download failed:", e$message))
+      message(paste("Download from configured repos failed:", e$message))
     })
+  }
+
+  # Fallback: try CRAN (public cran.r-project.org)
+  if (!download_successful) {
+    message(paste("Checking", package_name, "on CRAN..."))
+    if (check_cran_package(package_name)) {
+      result_cran <- check_and_fetch_cran_package(package_name = package_name, package_version = version)
+      package_url <- result_cran$package_url
+      if (!is.null(package_url) && is.character(package_url) && startsWith(package_url, "http")) {
+        temp_file <- tempfile(fileext = ".tar.gz")
+        tryCatch({
+          download.file(url = package_url, destfile = temp_file, mode = "wb")
+          download_successful <- TRUE
+        }, error = function(e) {
+          message(paste("CRAN download failed:", e$message))
+        })
+      } else {
+        message("CRAN package URL could not be resolved.")
+      }
+    }
   }
   
   # If not successful on CRAN, try Bioconductor
@@ -723,7 +772,7 @@ get_package_tarfile <- function(package_name, version = NULL, repos = getOption(
   # Final fallback: internal mirror
   if (!download_successful) {
     message(paste("Attempting internal fallback download for", package_name))
-    package_info <- get_internal_package_url(package_name, package_version)
+    package_info <- get_internal_package_url(package_name, version)
     
     tryCatch({
       if (!is.null(package_info$url)) {

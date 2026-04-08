@@ -1,24 +1,28 @@
-# Mock function for file.choose
-mock_file_choose <- function() {
-  skip_on_cran()
-  return(system.file("test-data", "test.package.0001_0.1.0.tar.gz", 
-                     package = "risk.assessr"))
+# Helper: copy test tarball to temp file; returns path or "" if not found
+get_test_tarball_path <- function() {
+  dp_orig <- system.file("test-data", "test.package.0001_0.1.0.tar.gz",
+                        package = "risk.assessr")
+  if (nchar(dp_orig) == 0L) return("")
+  dp <- tempfile(fileext = ".tar.gz")
+  if (!file.copy(dp_orig, dp)) return("")
+  dp
 }
 
-# Define the test
-test_that("risk_assess_pkg works with mocked file.choose", {
+test_that("risk_assess_pkg works with path to local tarball", {
   skip_on_cran()
-  
   skip_if(
     .Platform$OS.type == "windows",
-    "risk_assess_pkg runs file.choose on Windows; mocking paths is not reliable under devtools::check()"
+    "covr runs in a subprocess on Windows; mocking is not reliable under devtools::test()"
   )
-  
-  # Stub file.choose with the mock function
-  mockery::stub(risk_assess_pkg, "file.choose", mock_file_choose)
-  
-  # Call the function
-  risk_assess_package <- risk_assess_pkg()
+  dp <- get_test_tarball_path()
+  if (nchar(dp) == 0L) skip("Test data test.package.0001_0.1.0.tar.gz not found")
+  withr::defer(unlink(dp), envir = parent.frame())
+
+  r <- getOption("repos")
+  r["CRAN"] <- "http://cran.us.r-project.org"
+  options(repos = r)
+
+  risk_assess_package <- risk_assess_pkg(path = dp)
   
   testthat::expect_identical(length(risk_assess_package), 5L)
   
@@ -132,65 +136,50 @@ test_that("risk_assess_pkg works with mocked file.choose", {
 })
 
 
-test_that("risk_assess_pkg works with mocked file.choose and get_host_package", {
+test_that("risk_assess_pkg works with path and mocked get_host_package", {
   skip_on_cran()
-  
-  skip_if(
-    .Platform$OS.type == "windows",
-    "risk_assess_pkg runs file.choose on Windows; mocking paths is not reliable under devtools::check()"
-  )
-  
-  # Stub file.choose with the mock function (already handled)
-  mockery::stub(risk_assess_pkg, "file.choose", mock_file_choose)
+  dp <- get_test_tarball_path()
+  if (nchar(dp) == 0L) skip("Test data test.package.0001_0.1.0.tar.gz not found")
+  withr::defer(unlink(dp), envir = parent.frame())
 
-  # Define the mock function for get_host_package
+  r <- getOption("repos")
+  r["CRAN"] <- "http://cran.us.r-project.org"
+  options(repos = r)
+
   mock_get_host_package <- function(pkg_name, pkg_ver, pkg_source_path) {
-    return(list(cran = TRUE, host = "CRAN", url = "https://cran.r-project.org"))
+    list(cran = TRUE, host = "CRAN", url = "https://cran.r-project.org")
   }
-
-  # Apply mocked binding for risk.assessr::get_host_package
   local_mocked_bindings(
     get_host_package = mock_get_host_package,
     .package = "risk.assessr"
   )
 
-  # Call the function
-  risk_assess_package <- risk_assess_pkg()
+  risk_assess_package <- risk_assess_pkg(path = dp)
 
-  # Expect the function to return a valid assessment result
   testthat::expect_true(checkmate::check_class(risk_assess_package, "list"))
 })
 
 
 test_that("risk_assess_pkg works with path params", {
   skip_on_cran()
-  r = getOption("repos")
-  r["CRAN"] = "http://cran.us.r-project.org"
+  dp <- get_test_tarball_path()
+  if (nchar(dp) == 0L) skip("Test data test.package.0001_0.1.0.tar.gz not found")
+  withr::defer(unlink(dp), envir = parent.frame())
+
+  r <- getOption("repos")
+  r["CRAN"] <- "http://cran.us.r-project.org"
   options(repos = r)
 
-  skip_if(
-    .Platform$OS.type == "windows",
-    "risk_assess_pkg runs system.file on Windows; mocking paths is not reliable under devtools::check()"
-  )
-  
-  dp <- system.file("test-data/test.package.0001_0.1.0.tar.gz",
-                    package = "risk.assessr")
-
-  # Define the mock function for get_host_package
   mock_get_host_package <- function(pkg_name, pkg_ver, pkg_source_path) {
-    return(list(cran = TRUE, host = "CRAN", url = "https://cran.r-project.org"))
+    list(cran = TRUE, host = "CRAN", url = "https://cran.r-project.org")
   }
-
-  # Apply mocked binding for risk.assessr::get_host_package
   local_mocked_bindings(
     get_host_package = mock_get_host_package,
     .package = "risk.assessr"
   )
 
-  # Call the function
   risk_assess_package <- risk_assess_pkg(path = dp)
 
-  # Expect the function to return a valid assessment result
   testthat::expect_true(checkmate::check_class(risk_assess_package, "list"))
 })
 
@@ -215,4 +204,147 @@ test_that("risk_assess_pkg works with invalid path params", {
 
   expect_warning(risk_assess_package <- risk_assess_pkg(path = dp))
   testthat::expect_null(risk_assess_package)
+})
+
+# ---- package param (get_package_tarfile) ----
+
+test_that("risk_assess_pkg with package param uses get_package_tarfile and returns list when successful", {
+  skip_on_cran()
+  skip_if(
+    .Platform$OS.type == "windows",
+    "covr runs in subprocess on Windows; not reliable under devtools::test()"
+  )
+  dp <- get_test_tarball_path()
+  if (nchar(dp) == 0L) skip("Test data test.package.0001_0.1.0.tar.gz not found")
+  withr::defer(unlink(dp), envir = parent.frame())
+
+  mockery::stub(risk_assess_pkg, "get_package_tarfile", function(package_name, version, repos) dp)
+  mock_get_host_package <- function(pkg_name, pkg_ver, pkg_source_path) {
+    list(cran = TRUE, host = "CRAN", url = "https://cran.r-project.org")
+  }
+  local_mocked_bindings(get_host_package = mock_get_host_package, .package = "risk.assessr")
+
+  r <- getOption("repos")
+  r["CRAN"] <- "http://cran.us.r-project.org"
+  options(repos = r)
+
+  out <- risk_assess_pkg(package = "here")
+  testthat::expect_true(is.list(out))
+  testthat::expect_identical(length(out), 5L)
+})
+
+test_that("risk_assess_pkg with package and version passes version to get_package_tarfile", {
+  skip_on_cran()
+  skip_if(
+    .Platform$OS.type == "windows",
+    "covr runs in subprocess on Windows; not reliable under devtools::test()"
+  )
+  dp <- get_test_tarball_path()
+  if (nchar(dp) == 0L) skip("Test data test.package.0001_0.1.0.tar.gz not found")
+  withr::defer(unlink(dp), envir = parent.frame())
+
+  captured <- list(version = NULL)
+  mock_get_tarfile <- function(package_name, version, repos) {
+    captured$version <<- version
+    dp
+  }
+  mockery::stub(risk_assess_pkg, "get_package_tarfile", mock_get_tarfile)
+  mock_get_host_package <- function(pkg_name, pkg_ver, pkg_source_path) {
+    list(cran = TRUE, host = "CRAN", url = "https://cran.r-project.org")
+  }
+  local_mocked_bindings(get_host_package = mock_get_host_package, .package = "risk.assessr")
+
+  r <- getOption("repos")
+  r["CRAN"] <- "http://cran.us.r-project.org"
+  options(repos = r)
+
+  risk_assess_pkg(package = "here", version = "1.0.1")
+  testthat::expect_identical(captured$version, "1.0.1")
+})
+
+test_that("risk_assess_pkg with package returns NULL and warns when get_package_tarfile fails", {
+  mockery::stub(risk_assess_pkg, "get_package_tarfile", function(...) stop("Download failed"))
+
+  testthat::expect_warning(out <- risk_assess_pkg(package = "nonexistentpkg"), "Failed to download package")
+  testthat::expect_null(out)
+})
+
+# ---- file.choose branch ----
+
+test_that("risk_assess_pkg with no path or package uses file.choose and succeeds when file exists", {
+  skip_on_cran()
+  skip_if(
+    .Platform$OS.type == "windows",
+    "file.choose mocking not reliable on Windows under devtools::test()"
+  )
+  dp <- get_test_tarball_path()
+  if (nchar(dp) == 0L) skip("Test data test.package.0001_0.1.0.tar.gz not found")
+  withr::defer(unlink(dp), envir = parent.frame())
+
+  mockery::stub(risk_assess_pkg, "file.choose", function() dp)
+  mock_get_host_package <- function(pkg_name, pkg_ver, pkg_source_path) {
+    list(cran = TRUE, host = "CRAN", url = "https://cran.r-project.org")
+  }
+  local_mocked_bindings(get_host_package = mock_get_host_package, .package = "risk.assessr")
+
+  r <- getOption("repos")
+  r["CRAN"] <- "http://cran.us.r-project.org"
+  options(repos = r)
+
+  out <- risk_assess_pkg()
+  testthat::expect_true(is.list(out))
+})
+
+test_that("risk_assess_pkg with file.choose returns NULL and warns when chosen file does not exist", {
+  mockery::stub(risk_assess_pkg, "file.choose", function() "/nonexistent/chosen.tar.gz")
+
+  testthat::expect_warning(out <- risk_assess_pkg(), "Chosen file does not exist")
+  testthat::expect_null(out)
+})
+
+# ---- path vs package conflict ----
+
+test_that("risk_assess_pkg warns and returns NULL when both path and package are provided", {
+  dp <- get_test_tarball_path()
+  if (nchar(dp) == 0L) skip("Test data not found")
+
+  expect_warning(out <- risk_assess_pkg(path = dp, package = "here"), "Provide either 'path' or 'package'")
+  testthat::expect_null(out)
+})
+
+# ---- failed unpack ----
+
+test_that("risk_assess_pkg returns NULL with message when set_up_pkg fails to unpack", {
+  dp <- get_test_tarball_path()
+  if (nchar(dp) == 0L) skip("Test data not found")
+  withr::defer(unlink(dp), envir = parent.frame())
+
+  mock_set_up_pkg <- function(...) list(
+    package_installed = FALSE,
+    pkg_source_path = "",
+    build_vignettes = TRUE,
+    rcmdcheck_args = list()
+  )
+  mockery::stub(risk_assess_pkg, "set_up_pkg", mock_set_up_pkg)
+
+  expect_message(out <- risk_assess_pkg(path = dp), "Failed to unpack package")
+  testthat::expect_null(out)
+})
+
+# ---- failed local install ----
+
+test_that("risk_assess_pkg returns NULL with message when install_package_local fails", {
+  skip_on_cran()
+  dp <- get_test_tarball_path()
+  if (nchar(dp) == 0L) skip("Test data not found")
+  withr::defer(unlink(dp), envir = parent.frame())
+
+  mockery::stub(risk_assess_pkg, "install_package_local", function(...) FALSE)
+
+  r <- getOption("repos")
+  r["CRAN"] <- "http://cran.us.r-project.org"
+  options(repos = r)
+
+  expect_message(out <- risk_assess_pkg(path = dp), "Package installation failed")
+  testthat::expect_null(out)
 })

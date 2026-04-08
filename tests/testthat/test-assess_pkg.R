@@ -88,7 +88,7 @@ test_that(
     
     # 2) Stub run_coverage at the call-site inside run_covr_modes()
     mockery::stub(
-      risk.assessr::run_covr_modes,
+      risk.assessr:::run_covr_modes,
       "run_coverage",
       mock_run_coverage
     )
@@ -547,7 +547,7 @@ test_that("running assess_pkg for test package fail suggest", {
     )
   }
   mockery::stub(
-    risk.assessr::run_covr_modes,
+    risk.assessr:::run_covr_modes,
     "run_coverage",
     mock_run_coverage
   )
@@ -558,10 +558,10 @@ test_that("running assess_pkg for test package fail suggest", {
     mockery::stub(risk.assessr:::create_covr_list_no_skip, "covr::package_coverage", tripwire)
   }
   if (exists("run_covr_skip_stf", envir = asNamespace("risk.assessr"), inherits = FALSE)) {
-    mockery::stub(risk.assessr::run_covr_skip_stf, "covr::package_coverage", tripwire)
+    mockery::stub(risk.assessr:::run_covr_skip_stf, "covr::package_coverage", tripwire)
   }
   if (exists("run_covr_skip_nstf", envir = asNamespace("risk.assessr"), inherits = FALSE)) {
-    mockery::stub(risk.assessr::run_covr_skip_nstf, "covr::package_coverage", tripwire)
+    mockery::stub(risk.assessr:::run_covr_skip_nstf, "covr::package_coverage", tripwire)
   }
   
   # ---- other external mocks ----
@@ -700,7 +700,7 @@ test_that("assess_pkg handles errors in check_suggested_exp_funcs correctly", {
     )
   }
   mockery::stub(
-    risk.assessr::run_covr_modes,
+    risk.assessr:::run_covr_modes,
     "run_coverage",
     mock_run_coverage
   )
@@ -711,10 +711,10 @@ test_that("assess_pkg handles errors in check_suggested_exp_funcs correctly", {
     mockery::stub(risk.assessr:::create_covr_list_no_skip, "covr::package_coverage", tripwire)
   }
   if (exists("run_covr_skip_stf", envir = asNamespace("risk.assessr"), inherits = FALSE)) {
-    mockery::stub(risk.assessr::run_covr_skip_stf, "covr::package_coverage", tripwire)
+    mockery::stub(risk.assessr:::run_covr_skip_stf, "covr::package_coverage", tripwire)
   }
   if (exists("run_covr_skip_nstf", envir = asNamespace("risk.assessr"), inherits = FALSE)) {
-    mockery::stub(risk.assessr::run_covr_skip_nstf, "covr::package_coverage", tripwire)
+    mockery::stub(risk.assessr:::run_covr_skip_nstf, "covr::package_coverage", tripwire)
   }
   
   # ---- Other external mocks used by assess_pkg() ----
@@ -836,7 +836,8 @@ test_that("assess_pkg handles error in check_suggested_exp_funcs via withCalling
     "Version: 0.1.0",
     "Title: Mock Package",
     "Description: A mock package for testing.",
-    "Authors@R: c(person(given = \"Mock\", family = \"Author\", role = c(\"aut\", \"cre\")))"
+    "Authors@R: c(person(given = \"Mock\", family = \"Author\", role = c(\"aut\", \"cre\")))",
+    "License: MIT"
   ), desc_path)
   
   # Stub get_pkg_desc to return mock name/version
@@ -879,7 +880,8 @@ test_that("assess_pkg handles error via outer tryCatch block", {
     "Version: 0.1.0",
     "Title: Mock Package",
     "Description: A mock package for testing.",
-    "Authors@R: c(person(given = \"Mock\", family = \"Author\", role = c(\"aut\", \"cre\")))"
+    "Authors@R: c(person(given = \"Mock\", family = \"Author\", role = c(\"aut\", \"cre\")))",
+    "License: MIT"
   ), desc_path)
   
   # Stub get_pkg_desc to return mock name/version
@@ -1052,4 +1054,3 @@ test_that("assess_pkg Bioconductor path coerces empty reverse deps to 0", {
   # Empty reverse deps must be coerced to numeric 0
   expect_identical(res$results$rev_deps, 0)
 })
-

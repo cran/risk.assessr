@@ -13,7 +13,7 @@
 #' If the R folder exists, the function returns \code{TRUE}. 
 #' @keywords internal
 contains_r_folder <- function(package_dir) {
- 
+  
   if (fs::dir_exists(fs::path(package_dir, "R"))) {
     r_folder <- TRUE
   } else {

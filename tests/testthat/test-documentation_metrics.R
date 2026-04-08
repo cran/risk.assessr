@@ -413,7 +413,7 @@ test_that("parse license not present", {
   rcmdcheck_args <- install_list$rcmdcheck_args
   
   if (package_installed == TRUE ) {	
-    result <- extract_license_from_description(pkg_source_path)
+    suppressWarnings(result <- extract_license_from_description(pkg_source_path))
     expect_true(is.na(result))
   }
 })
@@ -542,6 +542,54 @@ test_that("test assess_description_file_elements for all elements present", {
   }  
 
   test_source_control_elements()  
+})
+
+test_that("GitHub Pages URLs are detected as source control", {
+  # Create a temporary package directory with DESCRIPTION file
+  pkg_source_path <- tempfile(pattern = "testpkg")
+  dir.create(pkg_source_path)
+  on.exit(unlink(pkg_source_path, recursive = TRUE), add = TRUE)
+  
+  # org/user pages: *.github/* ; legacy project pages: *.pages.github.io
+  desc_path <- file.path(pkg_source_path, "DESCRIPTION")
+  description_text <- paste0(
+    "Package: testpkg\n",
+    "Title: Test Package\n",
+    "Version: 1.0.0\n",
+    "URL: https://sanofi-public.github.io/risk.assessr/\n",
+    "BugReports: https://github.com/Sanofi-Public/risk.assessr/issues\n"
+  )
+  writeLines(description_text, desc_path)
+  
+  # Test that GitHub Pages URL is detected
+  result <- assess_description_file_elements("testpkg", pkg_source_path)
+  expect_false(is.null(result$has_source_control))
+  expect_true(length(result$has_source_control) > 0)
+  expect_true(grepl("github\\.io", result$has_source_control))
+})
+
+test_that("BugReports URL is used as fallback when URL field doesn't match", {
+  # Create a temporary package directory with DESCRIPTION file
+  pkg_source_path <- tempfile(pattern = "testpkg")
+  dir.create(pkg_source_path)
+  on.exit(unlink(pkg_source_path, recursive = TRUE), add = TRUE)
+  
+  # Create DESCRIPTION with non-matching URL but GitHub BugReports
+  desc_path <- file.path(pkg_source_path, "DESCRIPTION")
+  description_text <- paste0(
+    "Package: testpkg\n",
+    "Title: Test Package\n",
+    "Version: 1.0.0\n",
+    "URL: https://example.com/package\n",
+    "BugReports: https://github.com/user/repo/issues\n"
+  )
+  writeLines(description_text, desc_path)
+  
+  # Test that BugReports URL is used as fallback
+  result <- assess_description_file_elements("testpkg", pkg_source_path)
+  expect_false(is.null(result$has_source_control))
+  expect_true(length(result$has_source_control) > 0)
+  expect_true(grepl("github\\.com", result$has_source_control))
 })
 
 test_that("test assess_description_file_elements for all elements present", {
@@ -2104,4 +2152,3 @@ test_that("always returns a length-1 double", {
   expect_equal(length(res), 1L)
   expect_type(res, "double")
 })
-

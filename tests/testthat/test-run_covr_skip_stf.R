@@ -660,4 +660,3 @@ test_that("create_covr_list_no_skip removes yarn from global environment", {
   # Check that yarn was removed
   expect_false(exists("yarn", envir = .GlobalEnv))
 })
-

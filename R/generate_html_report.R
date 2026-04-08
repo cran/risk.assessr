@@ -985,4 +985,3 @@ generate_rev_deps_section <- function(assessment_results) {
     rev_deps_summary = rev_deps_summary
   ))
 }
-

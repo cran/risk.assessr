@@ -1,3 +1,10 @@
+# risk.assessr 3.1.1
+
+## New Features
+
+ - patch release includes `risk_assess_pkg()` 
+   and `assess_pkg_r_package()` feature to retrieve latest package versions
+   
 # risk.assessr 3.1.0
 
 ## New Features
@@ -16,7 +23,6 @@
 ## New Features
 
 - this version fixes issues found in the CRAN check
-
 
 # risk.assessr 3.0.0
 
@@ -63,7 +69,7 @@
 
 - **test cleanup**
   - tests that use `tar` files located in `inst/test-data` have improved clean up using `withr::defer` and `unlink` 
-  - change `generate_html_report` and `test-generate_html_report` to make them CRAN compliant
+   change `generate_html_report` and `test-generate_html_report` to make them CRAN compliant
   
 - **vignette build**
   - vignettes that access `CRAN` set to `eval=FALSE` to aid in detritus cleanup

@@ -41,7 +41,7 @@ remove_base_packages <- function(df) {
     )
     readRDS(local)
   }, error = function(e) {
-    stop("Failed to download or read CRAN package metadata: ", e$message)
+    message("Failed to download or read CRAN package metadata: ", e$message)
   })
   
   # Identify base and recommended packages from the metadata

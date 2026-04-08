@@ -1116,6 +1116,71 @@ test_that("get_internal_package_url handles failure in all package API calls", {
   expect_null(result$repo_name)
 })
 
+test_that("get_internal_package_url handles archived as list (not data.frame)", {
+  # JSON with inconsistent archived structure so jsonlite parses as list, not data.frame
+  # Covers: } else if (is.list(found_data$archived)) { for (av in found_data$archived) ...
+  mock_repos_response <- list(
+    content = charToRaw(enc2utf8('[
+      {"id": 6, "name": "art-git"},
+      {"id": 1, "name": "prod-cran"}
+    ]')),
+    status_code = 200
+  )
+  
+  # Archived array: first element has date, second has notes - different keys => list, not data.frame
+  mock_package_response <- list(
+    content = charToRaw(enc2utf8('{
+      "version": "1.2.0",
+      "date_publication": "2024-01-01T12:00:00+01:00",
+      "archived": [
+        {"version": "1.0.0", "date": "2023-01-01"},
+        {"version": "1.1.0", "date": "2023-06-01"}
+      ]
+    }')),
+    status_code = 200
+  )
+  
+  # Use simplifyDataFrame=FALSE for package response so archived is a list
+  original_fromJSON <- jsonlite::fromJSON
+  fromJSON_calls <- 0L
+  mock_fromJSON <- function(txt, ...) {
+    fromJSON_calls <<- fromJSON_calls + 1L
+    if (fromJSON_calls == 2L && inherits(txt, "character") && grepl("archived", txt, fixed = TRUE)) {
+      return(original_fromJSON(txt, simplifyDataFrame = FALSE, ...))
+    }
+    return(original_fromJSON(txt, ...))
+  }
+  
+  mock_curl_fetch_memory <- mockery::mock(
+    mock_repos_response,
+    mock_package_response
+  )
+  
+  local_mocked_bindings(curl_fetch_memory = mock_curl_fetch_memory, .package = "curl")
+  local_mocked_bindings(fromJSON = mock_fromJSON, .package = "jsonlite")
+  
+  result <- get_internal_package_url("mockpackage", "1.0.0", base_url = "https://rstudio-pm.com")
+  
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[1]],
+    list("https://rstudio-pm.com/__api__/repos/")
+  )
+  expect_equal(
+    mockery::mock_args(mock_curl_fetch_memory)[[2]],
+    list("https://rstudio-pm.com/__api__/repos/6/packages/mockpackage")
+  )
+  
+  expect_equal(result$url, "https://rstudio-pm.com/art-git/latest/src/contrib/Archive/mockpackage/mockpackage_1.0.0.tar.gz")
+  expect_equal(result$last_version$version, "1.2.0")
+  expect_equal(result$all_versions, list(
+    list(version = "1.2.0", date = as.Date("2024-01-01")),
+    list(version = "1.0.0", date = as.Date("2023-01-01")),
+    list(version = "1.1.0", date = as.Date("2023-06-01"))
+  ))
+  expect_equal(result$repo_id, c("art-git" = 6))
+  expect_equal(result$repo_name, "art-git")
+})
+
 # get_host_package
 
 test_that("get_host_package returns correct links for valid inputs", {
@@ -1398,4 +1463,148 @@ test_that("get_host_package with no github name, but bug report", {
       expect_null(result$bioconductor_links)
     }
   )
+})
+
+test_that("get_package_tarfile works with system test package via mocked download", {
+  # Get system file - same pattern as test-install_package_local
+  dp_orig <- system.file("test-data",
+                         "test.package.0001_0.1.0.tar.gz",
+                         package = "risk.assessr")
+  
+  testthat::skip_if_not(
+    file.exists(dp_orig),
+    "test.package.0001_0.1.0.tar.gz not found in test-data"
+  )
+  
+  # Copy test package to a temp file
+  dp <- tempfile(fileext = ".tar.gz")
+  file.copy(dp_orig, dp)
+  
+  # Defer cleanup of copied tarball
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  # Mock download.file to copy from our test package instead of downloading
+  mockery::stub(get_package_tarfile, "check_cran_package", TRUE)
+  mockery::stub(get_package_tarfile, "check_and_fetch_cran_package", function(package_name, package_version = NULL) {
+    list(package_url = "https://cran.r-project.org/src/contrib/test.package.0001_0.1.0.tar.gz")
+  })
+  mockery::stub(get_package_tarfile, "download.file", function(url, destfile, ...) {
+    file.copy(dp, destfile, overwrite = TRUE)
+    0
+  })
+  
+  path <- get_package_tarfile("test.package.0001", version = "0.1.0")
+  
+  # Defer cleanup of returned tarball
+  withr::defer(unlink(path), envir = parent.frame())
+  
+  expect_true(file.exists(path))
+  expect_match(path, "tar\\.gz$")
+  # Verify content matches our test package
+  expect_equal(file.size(path), file.size(dp))
+})
+
+test_that("get_package_tarfile passes version to internal fallback", {
+  mockery::stub(get_package_tarfile, "check_cran_package", FALSE)
+  mockery::stub(get_package_tarfile, "fetch_bioconductor_releases", function() "html")
+  mockery::stub(get_package_tarfile, "parse_bioconductor_releases", function(html) "release_data")
+  mockery::stub(get_package_tarfile, "get_bioconductor_package_url", function(...) list(url = NULL))
+  
+  captured_version <- NULL
+  mockery::stub(get_package_tarfile, "get_internal_package_url", function(package_name, version = NULL, base_url = NULL) {
+    captured_version <<- version
+    list(
+      url = "https://internal.example/repo/src/contrib/VersionedPkg_1.2.3.tar.gz",
+      last_version = list(version = "1.2.3", date = as.Date("2024-01-01")),
+      all_versions = list(list(version = "1.2.3", date = as.Date("2024-01-01"))),
+      repo_id = "1", repo_name = "internal-repo"
+    )
+  })
+  mockery::stub(get_package_tarfile, "download.file", function(url, destfile, mode = "wb", quiet = TRUE) {
+    make_tarball(destfile, pkg_name = "versionedpkg", version = "1.2.3")
+    0
+  })
+  
+  path <- get_package_tarfile("VersionedPkg", version = "1.2.3")
+  withr::defer(unlink(path), envir = parent.frame())
+  
+  expect_true(file.exists(path))
+  expect_identical(captured_version, "1.2.3")
+})
+
+test_that("Bioconductor branch uses system test package when result_bio$url is not null", {
+  # Get system file - same pattern as test-install_package_local
+  dp_orig <- system.file("test-data",
+                         "test.package.0001_0.1.0.tar.gz",
+                         package = "risk.assessr")
+  
+  testthat::skip_if_not(
+    file.exists(dp_orig),
+    "test.package.0001_0.1.0.tar.gz not found in test-data"
+  )
+  
+  # Copy test package to a temp file
+  dp <- tempfile(fileext = ".tar.gz")
+  file.copy(dp_orig, dp)
+  
+  # Defer cleanup of copied tarball
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  # Exercise Bioconductor branch: check_cran_package FALSE, result_bio$url not null
+  mockery::stub(get_package_tarfile, "check_cran_package", FALSE)
+  mockery::stub(get_package_tarfile, "fetch_bioconductor_releases", function() "html_content")
+  mockery::stub(get_package_tarfile, "parse_bioconductor_releases", function(html) "release_data")
+  mockery::stub(get_package_tarfile, "get_bioconductor_package_url", function(...) {
+    list(url = "http://dummybioc.org/test.package.0001_0.1.0.tar.gz")
+  })
+  mockery::stub(get_package_tarfile, "download.file", function(url, destfile, ...) {
+    file.copy(dp, destfile, overwrite = TRUE)
+    0
+  })
+  
+  path <- get_package_tarfile("test.package.0001", version = "0.1.0")
+  
+  # Defer cleanup of returned tarball
+  withr::defer(unlink(path), envir = parent.frame())
+  
+  expect_true(file.exists(path))
+  expect_match(path, "tar\\.gz$")
+  expect_equal(file.size(path), file.size(dp))
+})
+
+test_that("Bioconductor download error handler runs and falls through to internal mirror", {
+  # result_bio$url is not null, but download.file throws
+  # Covers: tryCatch error handler with message("Bioconductor download failed:", e$message)
+  mockery::stub(get_package_tarfile, "check_cran_package", FALSE)
+  mockery::stub(get_package_tarfile, "fetch_bioconductor_releases", function() "html_content")
+  mockery::stub(get_package_tarfile, "parse_bioconductor_releases", function(html) "release_data")
+  mockery::stub(get_package_tarfile, "get_bioconductor_package_url", function(...) {
+    list(url = "http://dummybioc.org/pkg.tar")  # url not null - enters the if branch
+  })
+  
+  # download.file throws - exercises error handler
+  mockery::stub(get_package_tarfile, "download.file", function(url, destfile, ...) {
+    if (grepl("dummybioc", url)) {
+      stop("Bioconductor network timeout")
+    }
+    make_tarball(destfile, pkg_name = "internalpkg", version = "0.1")
+    0
+  })
+  mockery::stub(get_package_tarfile, "get_internal_package_url", function(package_name, version = NULL, base_url = NULL) {
+    list(
+      url = "https://internal.example/repo/src/contrib/FallbackPkg_0.1.tar.gz",
+      last_version = list(version = "0.1", date = as.Date("2023-01-01")),
+      all_versions = list(list(version = "0.1", date = as.Date("2023-01-01"))),
+      repo_id = "1", repo_name = "internal-repo"
+    )
+  })
+  
+  expect_message(
+    path <- get_package_tarfile("BiocPkg"),
+    "Bioconductor download failed"
+  )
+  
+  withr::defer(unlink(path), envir = parent.frame())
+  
+  expect_true(file.exists(path))
 })

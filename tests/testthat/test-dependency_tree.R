@@ -1402,7 +1402,7 @@ test_that("extract_license_from_description handles corrupted DESCRIPTION file",
   ), desc_path)
   
   # Should handle gracefully (might return NA or the license)
-  license <- extract_license_from_description(temp_dir)
+  suppressWarnings(license <- extract_license_from_description(temp_dir))
   
   # Should either return the license or NA
   expect_true(is.character(license) || is.na(license))

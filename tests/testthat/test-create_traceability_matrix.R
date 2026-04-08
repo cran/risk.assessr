@@ -204,7 +204,7 @@ test_that("running tm for created package in tar file with no R directory", {
 })
 
 # The following test will be reactivated when 
-# https://github.com/Sanofi-GitHub/bp-art-sanofi.risk.assessr/issues/78 is fixed
+# https://github.com/Sanofi-Public/risk.assessr/issues/78 is fixed
 
 test_that("running tm for created package in tar file with empty R directory", {
   skip_on_cran()
@@ -738,5 +738,4 @@ test_that("create_traceability_matrix creates dummy func_covr when coverage is m
   expect_true("tm" %in% names(result))
   expect_equal(result$tm$coverage_percent, c(0, 0))
 })
-
 

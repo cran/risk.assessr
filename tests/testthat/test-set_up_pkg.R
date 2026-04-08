@@ -181,4 +181,3 @@ test_that("set_up_pkg sets build_vignettes to FALSE when bv_result is TRUE", {
   
   expect_false(install_list$build_vignettes)
 })
-

@@ -503,27 +503,33 @@ assess_description_file_elements <- function(pkg_name, pkg_source_path) {
     has_website <- desc_elements$URL
   }
   
-  if (is.null(desc_elements$URL) | (is.na(desc_elements$URL))) {
-    message(glue::glue("{pkg_name} does not have a website"))
-    has_website <- NULL
-  } else {
-    message(glue::glue("{pkg_name} has a website"))
-    has_website <- desc_elements$URL
+  # Check for source control URL
+  # Pattern includes GitHub Pages URLs (pages.github.io, github.io) and other common source control hosts
+  patterns <- "github\\.com|pages\\.github\\.io|github\\.io|bitbucket\\.org|gitlab\\.com|\\.ac\\.uk|\\.edu\\.au|bioconductor\\.org"
+  
+  # First check URL field
+  url_to_check <- desc_elements$URL
+  url_matches <- character(0)
+  
+  if (!is.null(url_to_check) && !is.na(url_to_check)) {
+    url_matches <- grep(patterns, url_to_check, value = TRUE)
   }
   
-  if (is.null(desc_elements$URL) | (is.na(desc_elements$URL))) {
+  # If URL field doesn't match, check BugReports as fallback
+  if (length(url_matches) == 0 && !is.null(desc_elements$BugReports) && !is.na(desc_elements$BugReports)) {
+    bugreports_matches <- grep(patterns, desc_elements$BugReports, value = TRUE)
+    if (length(bugreports_matches) > 0) {
+      url_matches <- bugreports_matches
+      message(glue::glue("{pkg_name} source control detected via BugReports URL"))
+    }
+  }
+  
+  if (length(url_matches) == 0) {
     message(glue::glue("{pkg_name} does not have a source control"))
     has_source_control <- NULL
   } else {
-    patterns <- "github\\.com|bitbucket\\.org|gitlab\\.com|\\.ac\\.uk|\\.edu\\.au|bioconductor\\.org"
-    url_matches <- grep(patterns, desc_elements$URL, value = TRUE)
-    if (length(url_matches) == 0) {
-      message(glue::glue("{pkg_name} does not have a source control"))
-      has_source_control <- NULL
-    } else {
-      message(glue::glue("{pkg_name} has a source control"))
-      has_source_control <- url_matches
-    }
+    message(glue::glue("{pkg_name} has a source control"))
+    has_source_control <- url_matches
   }
   
   desc_elements_scores <- list(

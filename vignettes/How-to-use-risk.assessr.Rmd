@@ -85,4 +85,3 @@ These functions provide a consistent interface to assess risk for:
 You can extend functionality by passing a custom `risk_config` to override default.
 
 See more [Here](define_custom_risk_rules.html)
-
