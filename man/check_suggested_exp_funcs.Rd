@@ -21,3 +21,4 @@ This function checks the exported functions of target package
 against the exported functions of Suggested dependencies to see if any 
 Suggested packages should be in Imports in the DESCRIPTION file
 }
+\keyword{internal}

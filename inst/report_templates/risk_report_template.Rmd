@@ -161,11 +161,11 @@ kableExtra::kable_styling(rcmd_check_output_html,
                        background = "green" 
                                ) %>%
   kableExtra::column_spec(errors_col, 
-                          background = ifelse(rcmd_check_output$Errors == "No errors", "green", "red")) %>%
+                          background = ifelse(is.na(rcmd_check_output$Errors) | rcmd_check_output$Errors == "No errors", "green", "red")) %>%
   kableExtra::column_spec(warnings_col, 
-                          background = ifelse(rcmd_check_output$Warnings == "No warnings", "green", "yellow")) %>%
+                          background = ifelse(is.na(rcmd_check_output$Warnings) | rcmd_check_output$Warnings == "No warnings", "green", "yellow")) %>%
   kableExtra::column_spec(notes_col, 
-                          background = ifelse(rcmd_check_output$Notes == "No notes", "green", "yellow")) %>%
+                           background = ifelse(is.na(rcmd_check_output$Notes) | rcmd_check_output$Notes == "No notes", "green", "yellow")) %>%
   kableExtra::add_header_above(c("R CMD check" = 5), bold = TRUE, background = "green", color = "black") 
 ```
 
@@ -175,52 +175,45 @@ library(kableExtra)
 
 coverage_output <- get("coverage_output", envir = report_env)
 
-colnames(coverage_output) <- c("Function", "Coverage", "Errors", "Notes")
-
-
-# Get the column indices based on the column names
-errors_col <- which(names(coverage_output) == "Errors")
-notes_col <- which(names(coverage_output) == "Notes")
-
-# Render the table using knitr and kableExtra
-# Display df
-coverage_output_html_DT <- DT::datatable(coverage_output, 
-                                         rownames = FALSE, 
-                                         colnames = c("Function", "Coverage", "Errors", "Notes"),
-                                         options = list(
-                                           pageLength = 10,  # Number of rows to display per page
-                                           lengthMenu = c(10, 20, 50),  # Options for number of rows per page
-                                           search = list(search = ""),  # Enable search functionality
-                                           dom = 'Bfrtip',  # Include buttons, filter, and pagination
-                                           buttons = c('copy', 'csv', 'excel', 'pdf', 'print')  # Export buttons
-                                         ))
-
-# Apply styling
-coverage_output_html_DT <- coverage_output_html_DT %>%
-  DT::formatStyle(
-    columns = 'Errors',
-    backgroundColor = DT::styleEqual(
-      levels = c("No testthat or testit configuration", "No test coverage errors", "Other Value"),
-      values = c("red", "green", "red")
-
+render_coverage_dt <- function(df, title = "Test Coverage") {
+  colnames(df) <- c("Function", "Coverage", "Errors", "Notes")
+  tbl <- DT::datatable(df,
+                       rownames = FALSE,
+                       colnames = c("Function", "Coverage", "Errors", "Notes"),
+                       options = list(
+                         pageLength = 10,
+                         lengthMenu = c(10, 20, 50),
+                         search = list(search = ""),
+                         dom = 'Bfrtip',
+                         buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+                       )) %>%
+    DT::formatStyle(
+      columns = 'Errors',
+      backgroundColor = DT::styleEqual(
+        levels = c("No testthat or testit configuration", "No test coverage errors", "Other Value"),
+        values = c("red", "green", "red")
+      )
+    ) %>%
+    DT::formatStyle(
+      columns = 'Notes',
+      backgroundColor = DT::styleEqual(
+        levels = c("No test coverage notes", "Other Value"),
+        values = c("green", "yellow")
+      )
     )
-  ) %>%
-  DT::formatStyle(
-    columns = 'Notes',
-    backgroundColor = DT::styleEqual(
-      levels = c("No test coverage notes", "Other Value"),
-      values = c("green", "yellow")
-    )
+  htmltools::tagList(
+    htmltools::tags$h2(title, style = "font-weight: bold; background-color: green; color: black; text-align: center;"),
+    tbl
   )
+}
 
-# Render the datatable with a custom header
-htmltools::tagList(
-  htmltools::tags$h2("Test Coverage", style = "font-weight: bold; background-color: green; color: black; text-align: center;"),
-  coverage_output_html_DT
-)
-
-# Render the datatable
-# coverage_output_html_DT
+if (is.data.frame(coverage_output)) {
+  render_coverage_dt(coverage_output)
+} else {
+  htmltools::tagList(lapply(names(coverage_output), function(fw) {
+    render_coverage_dt(coverage_output[[fw]], title = paste("Test Coverage -", fw))
+  }))
+}
 ```
 
 ```{r doc_metrics, echo=FALSE}

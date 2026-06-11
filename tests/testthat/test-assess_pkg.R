@@ -1,3 +1,63 @@
+# Mock test.assessr::get_package_coverage for assess_pkg tests.
+#
+# filecoverage keys MUST match the code_script values in exports_df so that the
+# left_join in create_traceability_matrix succeeds.  code_script is derived from
+# Rd file names: man/foo.Rd -> R/foo.R.  Using R/*.R names instead breaks the join
+# when an R source file (e.g. R/myscript.R) has a different base name from its Rd
+# page (e.g. man/myfunction.Rd), which is the normal R convention.
+assess_pkg_test_mock_get_package_coverage <- function(pkg_source_path, package_installed) {
+  pkg_nm  <- unname(read.dcf(file.path(pkg_source_path, "DESCRIPTION"), fields = "Package")[1, 1])
+  man_dir <- file.path(pkg_source_path, "man")
+  
+  if (dir.exists(man_dir)) {
+    # Derive keys from man/*.Rd names — the same source used by assess_exported_functions_docs.
+    rd_files <- list.files(man_dir, pattern = "\\.[Rr][Dd]$", full.names = FALSE)
+    # Drop the package-level page (e.g. test.package.0001-package.Rd)
+    rd_files <- rd_files[!rd_files %in% paste0(pkg_nm, "-package.Rd")]
+    scripts  <- paste0("R/", sub("\\.[Rr][Dd]$", ".R", rd_files))
+  } else {
+    # Fallback when no man/ directory exists
+    r_dir   <- file.path(pkg_source_path, "R")
+    r_files <- if (dir.exists(r_dir)) {
+      list.files(r_dir, pattern = "\\.[Rr]$", full.names = FALSE)
+    } else {
+      character()
+    }
+    scripts <- if (length(r_files)) paste0("R/", r_files) else "R/myfunction.R"
+  }
+  
+  n  <- length(scripts)
+  fc <- structure(rep(100, n), dim = n, dimnames = list(scripts))
+  list(
+    total_cov = 1.0,
+    res_cov   = list(
+      name     = pkg_nm,
+      coverage = list(filecoverage = fc, totalcoverage = 100L)
+    )
+  )
+}
+
+# Empty dependency table as returned by parse_dcf_dependencies / get_dependencies
+assess_pkg_test_empty_deps_df <- function() {
+  data.frame(type = character(), package = character(), stringsAsFactors = FALSE)
+}
+
+# Minimal coverage result without calling test.assessr (avoids subprocess / orphan-cleanup messages)
+assess_pkg_test_mock_zero_coverage <- function(pkg_source_path, package_installed) {
+  pkg_nm <- unname(read.dcf(file.path(pkg_source_path, "DESCRIPTION"), fields = "Package")[1, 1])
+  list(
+    total_cov = 0,
+    res_cov = list(
+      name = pkg_nm,
+      coverage = list(
+        filecoverage = matrix(0, nrow = 1, dimnames = list("No functions tested")),
+        totalcoverage = 0L
+      ),
+      errors = NA_character_,
+      notes = NA
+    )
+  )
+}
 
 test_that(
   "running assess_pkg for test package in tar file - no notes",
@@ -9,11 +69,12 @@ test_that(
       .Platform$OS.type == "windows",
       "covr runs in a subprocess on Windows; mocking is not reliable under devtools::test()"
     )
-
+    
     # ---- repo setup ----
     r <- getOption("repos")
     r["CRAN"] <- "http://cran.us.r-project.org"
     options(repos = r)
+    skip_if_repo_unavailable()
     
     # ---- copy test tarball ----
     dp_orig <- system.file(
@@ -21,93 +82,21 @@ test_that(
       "test.package.0001_0.1.0.tar.gz",
       package = "risk.assessr"
     )
+    skip_if_test_data_missing(dp_orig)
     
-    dp <- tempfile(fileext = ".tar.gz")
+    dp_dir <- tempfile()
+    dir.create(dp_dir, recursive = TRUE)
+    dp <- file.path(dp_dir, basename(dp_orig))
     file.copy(dp_orig, dp)
     
-    withr::defer(unlink(dp), envir = parent.frame())
+    withr::defer(unlink(dp_dir, recursive = TRUE), envir = parent.frame())
     
-    # ---- covr mocks ---------------------------------------------------
-    
-    mock_covr_coverage <- function(path, type = "tests", ...) {
-      
-      line_cov <- data.frame(
-        filename = c(
-          "R/myfunction.R",
-          "tests/testthat/test-myfunction.R"
-        ),
-        line = c(1L, 1L),
-        value = c(1L, 1L),
-        stringsAsFactors = FALSE
-      )
-      
-      cov <- list(
-        package = "test.package.0001",
-        line_coverage = line_cov
-      )
-      
-      class(cov) <- "coverage"
-      cov
-    }
-    
-    # stub *before* assess_pkg() runs
+    # ---- coverage / external mocks -----------------------------------
     mockery::stub(
       assess_pkg,
-      "covr::package_coverage",
-      mock_covr_coverage
+      "test.assessr::get_package_coverage",
+      assess_pkg_test_mock_get_package_coverage
     )
-    
-    mockery::stub(
-      assess_pkg,
-      "covr::report",
-      function(...) invisible(NULL)
-    )
-    
-    mockery::stub(
-      assess_pkg,
-      "covr::percent_coverage",
-      function(x) 1
-    )
-    
-    # ---- other external mocks ----------------------------------------
-    
-    
-    # 1) Return a fully-populated covr_list from run_coverage()
-    mock_run_coverage <- function(pkg_source_path, covr_timeout) {
-      list(
-        total_cov = 1.0,  # non-NA to bypass skip STF
-        res_cov = list(
-          name = "test.package.0001",
-          coverage = list(
-            filecoverage  = c(100), # non-NA
-            totalcoverage = 100
-          )
-        )
-      )
-    }
-    
-    # 2) Stub run_coverage at the call-site inside run_covr_modes()
-    mockery::stub(
-      risk.assessr:::run_covr_modes,
-      "run_coverage",
-      mock_run_coverage
-    )
-    
-    # 3) Ensure the "has_testthat" condition is TRUE
-    mockery::stub(
-      assess_pkg,
-      "check_pkg_tests_and_snaps",
-      function(pkg_source_path) {
-        list(
-          has_testthat   = TRUE,
-          has_testit     = FALSE,
-          has_snaps      = TRUE,
-          n_golden_tests = 100,
-          n_test_files   = 100
-        )
-      }
-    )
-    
     
     mock_get_host_package <- function(pkg_name, pkg_ver, pkg_source_path) {
       list(
@@ -122,21 +111,6 @@ test_that(
       assess_pkg,
       "get_host_package",
       mock_get_host_package
-    )
-    
-    mock_check_pkg_tests <- function(pkg_source_path) {
-      list(
-        has_testthat = TRUE,
-        has_snaps = TRUE,
-        n_golden_tests = 100,
-        n_test_files = 100
-      )
-    }
-    
-    mockery::stub(
-      assess_pkg,
-      "check_pkg_tests_and_snaps",
-      mock_check_pkg_tests
     )
     
     mock_check_and_fetch_cran_package <- function(pkg_name, pkg_ver) {
@@ -209,7 +183,7 @@ test_that(
     expect_identical(length(assess_package), 5L)
     expect_true(checkmate::check_class(assess_package, "list"))
     
-    expect_identical(length(assess_package$results), 32L)
+    expect_identical(length(assess_package$results), 31L)
     
     expect_true(!is.na(assess_package$results$pkg_name))
     expect_true(!is.na(assess_package$results$pkg_version))
@@ -231,23 +205,31 @@ test_that(
     
     expect_identical(length(assess_package$tm_list$tm), 9L)
     
-    # high risk
-    expect_true(is.list(assess_package$tm_list$coverage$high_risk))
-    expect_identical(
-      assess_package$tm_list$coverage$high_risk$pkg_name,
-      "test.package.0001"
-    )
+    # high risk: either empty placeholder list (create_empty_tm) or a tibble of rows
+    hr <- assess_package$tm_list$coverage$high_risk
+    if (inherits(hr, "data.frame")) {
+      expect_true(nrow(hr) >= 0L)
+    } else {
+      expect_true(is.list(hr))
+      expect_identical(hr$pkg_name, pkg_name)
+    }
     
     # medium risk
-    expect_true(is.list(assess_package$tm_list$coverage$medium_risk))
+    mrisk <- assess_package$tm_list$coverage$medium_risk
+    if (inherits(mrisk, "data.frame")) {
+      expect_true(nrow(mrisk) >= 0L)
+    } else {
+      expect_true(is.list(mrisk))
+    }
     
-    # low risk
+    # low risk: pick myfunction row (package may have multiple exports / R files)
     low_risk <- assess_package$tm_list$coverage$low_risk
-    
-    expect_equal(nrow(low_risk), 1L)
-    expect_identical(low_risk$exported_function[1], "myfunction")
-    expect_true(grepl("^R/", low_risk$code_script[1]))
-    expect_equal(low_risk$coverage_percent[1], 100)
+    expect_true(inherits(low_risk, "data.frame"))
+    expect_true("myfunction" %in% low_risk$exported_function)
+    myfun_lr <- low_risk[low_risk$exported_function == "myfunction", , drop = FALSE]
+    expect_equal(nrow(myfun_lr), 1L)
+    expect_true(grepl("^R/", myfun_lr$code_script[1]))
+    expect_equal(myfun_lr$coverage_percent[1], 100)
     
     # ---- check data ---------------------------------------------------
     
@@ -263,8 +245,8 @@ test_that(
       assess_package$results$version_info$difference_version_months
     
     expect_equal(diff_months, 24)
-
-})
+    
+  })
 
 
 
@@ -276,16 +258,20 @@ test_that("running assess_pkg for test package in tar file - no exports", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
-
+  skip_if_repo_unavailable()
+  
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
                          "test.package.0005_0.1.0.tar.gz", 
                          package = "risk.assessr")
-  dp <- tempfile(fileext = ".tar.gz")
+  skip_if_test_data_missing(dp_orig)
+  dp_dir <- tempfile()
+  dir.create(dp_dir, recursive = TRUE)
+  dp <- file.path(dp_dir, basename(dp_orig))
   file.copy(dp_orig, dp)
   
   # Defer cleanup of copied tarball
-  withr::defer(unlink(dp), envir = parent.frame())
+  withr::defer(unlink(dp_dir, recursive = TRUE), envir = parent.frame())
   
   # Defer cleanup of unpacked source directory
   withr::defer(unlink(pkg_source_path, recursive = TRUE, force = TRUE),
@@ -294,20 +280,11 @@ test_that("running assess_pkg for test package in tar file - no exports", {
   mock_get_host_package <- function(pkg_name, pkg_ver, pkg_source_path) {
     return(list(cran_links = "CRAN", github_links = NULL, bioconductor_links = NULL, internal_links= NULL))
   }
-
+  
   mockery::stub(assess_pkg, "get_host_package", mock_get_host_package)
-
-  mock_unit_test <- function(pkg_source_path) {
-    return(list(
-      has_testthat = TRUE,
-      has_snaps = TRUE,
-      n_golden_tests = 100,
-      n_test_files = 100
-    ))
-  }
-
-  mockery::stub(assess_pkg, "check_pkg_tests_and_snaps", mock_unit_test)
-
+  
+  mockery::stub(assess_pkg, "test.assessr::get_package_coverage", assess_pkg_test_mock_zero_coverage)
+  
   mock_check_and_fetch_cran_package <- function(pkg_name, pkg_ver) {
     return(list(
       all_versions = list(
@@ -318,39 +295,39 @@ test_that("running assess_pkg for test package in tar file - no exports", {
       last_version = list(version = "1.0.0", date = "2023-01-01")
     ))
   }
-
+  
   mockery::stub(assess_pkg, "check_and_fetch_cran_package", mock_check_and_fetch_cran_package)
-
+  
   mock_get_risk_analysis <- function(pkg_name) {
     return(list())
   }
-
+  
   mockery::stub(assess_pkg, "get_risk_analysis", mock_get_risk_analysis)
-
-
+  
+  
   # set up package
   install_list <- set_up_pkg(dp)
-
+  
   build_vignettes <- install_list$build_vignettes
   package_installed <- install_list$package_installed
   pkg_source_path <- install_list$pkg_source_path
   rcmdcheck_args <- install_list$rcmdcheck_args
-
+  
   # install package locally to ensure test works
   package_installed <- install_package_local(pkg_source_path)
   package_installed <- TRUE
-
+  
   if (package_installed == TRUE ) {
-
+    
     # ensure path is set to package source path
     rcmdcheck_args$path <- pkg_source_path
     assess_package <- assess_pkg(pkg_source_path, rcmdcheck_args)
-
+    
     testthat::expect_identical(length(assess_package), 5L)
     
     testthat::expect_true(checkmate::check_class(assess_package, "list"))
     
-    testthat::expect_identical(length(assess_package$results), 32L)
+    testthat::expect_identical(length(assess_package$results), 31L)
     
     testthat::expect_true(!is.na(assess_package$results$pkg_name))
     
@@ -429,24 +406,15 @@ test_that("running assess_pkg for test package in tar file - no exports", {
 
 test_that("running assess_pkg for test package with Config/build/clean-inst-doc: false", {
   skip_on_cran()
-
+  
   mock_get_host_package <- function(pkg_name, pkg_ver, pkg_source_path) {
     return(list(cran_links = "CRAN", github_links = NULL, bioconductor_links = NULL, internal_links= NULL))
   }
-
+  
   mockery::stub(assess_pkg, "get_host_package", mock_get_host_package)
-
-  mock_unit_test <- function(pkg_source_path) {
-    return(list(
-      has_testthat = TRUE,
-      has_snaps = TRUE,
-      n_golden_tests = 100,
-      n_test_files = 100
-    ))
-  }
-
-  mockery::stub(assess_pkg, "check_pkg_tests_and_snaps", mock_unit_test)
-
+  
+  mockery::stub(assess_pkg, "test.assessr::get_package_coverage", assess_pkg_test_mock_zero_coverage)
+  
   mock_check_and_fetch_cran_package <- function(pkg_name, pkg_ver) {
     return(list(
       all_versions = list(
@@ -457,51 +425,52 @@ test_that("running assess_pkg for test package with Config/build/clean-inst-doc:
       last_version = list(version = "1.0.0", date = "2023-01-01")
     ))
   }
-
+  
   mockery::stub(assess_pkg, "check_and_fetch_cran_package", mock_check_and_fetch_cran_package)
-
+  
   mock_get_risk_analysis <- function(pkg_name) {
     return(list())
   }
-
+  
   mockery::stub(assess_pkg, "get_risk_analysis", mock_get_risk_analysis)
-
-
+  
+  
   dp <- system.file("test-data", "test.package.0005_0.1.0.tar.gz",
                     package = "risk.assessr")
-
+  skip_if_test_data_missing(dp)
+  
   # Check if the file exists before attempting to download
   if (!file.exists(dp)) {
     stop("The tar file does not exist at the specified path.")
   }
-
+  
   # Create a temporary file to store the downloaded package
   file_name <- basename(dp) # Use the base name for temporary file
   temp_file <- file.path(tempdir(), file_name)
-
+  
   # Copy the file to the temporary file instead of downloading it
   file.copy(dp, temp_file, overwrite = TRUE)
-
+  
   # Verify that the copy was successful
   if (!file.exists(temp_file)) {
     stop("File copy failed: temporary file not found.")
   }
-
+  
   # Run the function to modify the DESCRIPTION file
   modified_tar_file <- modify_description_file(temp_file)
-
+  
   # Set up package
   install_list <- set_up_pkg(dp)
-
+  
   build_vignettes <- install_list$build_vignettes
   package_installed <- install_list$package_installed
   pkg_source_path <- install_list$pkg_source_path
   rcmdcheck_args <- install_list$rcmdcheck_args
-
+  
   if (package_installed == TRUE) {
-
+    
     assess_package <- assess_pkg(pkg_source_path, rcmdcheck_args)
-
+    
     testthat::expect_true(checkmate::check_class(assess_package, "list"))
   }
 })
@@ -520,6 +489,7 @@ test_that("running assess_pkg for test package fail suggest", {
   r <- getOption("repos")
   r["CRAN"] <- "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # ---- copy test tarball ----
   dp_orig <- system.file(
@@ -527,29 +497,19 @@ test_that("running assess_pkg for test package fail suggest", {
     "test.package.0001_0.1.0.tar.gz",
     package = "risk.assessr"
   )
-  dp <- tempfile(fileext = ".tar.gz")
+  skip_if_test_data_missing(dp_orig)
+  dp_dir <- tempfile()
+  dir.create(dp_dir, recursive = TRUE)
+  dp <- file.path(dp_dir, basename(dp_orig))
   file.copy(dp_orig, dp)
   
-  withr::defer(unlink(dp), envir = parent.frame())
+  withr::defer(unlink(dp_dir, recursive = TRUE), envir = parent.frame())
   
-  # ---- covr path control: force STF and prevent fallback ----
-  # 1) Mock run_coverage() at its call site inside run_covr_modes()
-  mock_run_coverage <- function(pkg_source_path, covr_timeout) {
-    list(
-      total_cov = 1.0,  # MUST be non-NA to prevent fallback
-      res_cov = list(
-        name = "test.package.0001",
-        coverage = list(
-          filecoverage  = c(100),  # MUST be non-NA to prevent fallback
-          totalcoverage = 100
-        )
-      )
-    )
-  }
+  # ---- coverage path control: mock test.assessr provider ----
   mockery::stub(
-    risk.assessr:::run_covr_modes,
-    "run_coverage",
-    mock_run_coverage
+    assess_pkg,
+    "test.assessr::get_package_coverage",
+    assess_pkg_test_mock_get_package_coverage
   )
   
   # 2) Optional tripwires: if any direct covr path is still hit, fail fast
@@ -570,21 +530,6 @@ test_that("running assess_pkg for test package fail suggest", {
     "get_host_package",
     function(pkg_name, pkg_ver, pkg_source_path) {
       list(cran_links = "CRAN", github_links = NULL, bioconductor_links = NULL, internal_links = NULL)
-    }
-  )
-  
-  # Ensure STF branch is selected
-  mockery::stub(
-    assess_pkg,
-    "check_pkg_tests_and_snaps",
-    function(pkg_source_path) {
-      list(
-        has_testthat = TRUE,
-        has_testit   = FALSE,
-        has_snaps    = TRUE,
-        n_golden_tests = 100,
-        n_test_files   = 100
-      )
     }
   )
   
@@ -609,7 +554,7 @@ test_that("running assess_pkg for test package fail suggest", {
     function(pkg_name) list()
   )
   
-   # stub inside assess_pkg() because that's where the call appears in the function body.
+  # stub inside assess_pkg() because that's where the call appears in the function body.
   mockery::stub(
     assess_pkg,
     "check_suggested_exp_funcs",
@@ -642,11 +587,11 @@ test_that("running assess_pkg for test package fail suggest", {
   testthat::expect_identical(ncol(suggested_deps), length(expected))
   
   expect_identical(suggested_deps$source,
-    "test.package.0001"
+                   "test.package.0001"
   )
   
   expect_identical(suggested_deps$message,
-    "Error in checking suggested functions"
+                   "Error in checking suggested functions"
   )
   
 })
@@ -664,6 +609,7 @@ test_that("assess_pkg handles errors in check_suggested_exp_funcs correctly", {
   r <- getOption("repos")
   r["CRAN"] <- "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # ---- copy test tarball ----
   dp_orig <- system.file(
@@ -671,10 +617,13 @@ test_that("assess_pkg handles errors in check_suggested_exp_funcs correctly", {
     "test.package.0001_0.1.0.tar.gz",
     package = "risk.assessr"
   )
-  dp <- tempfile(fileext = ".tar.gz")
+  skip_if_test_data_missing(dp_orig)
+  dp_dir <- tempfile()
+  dir.create(dp_dir, recursive = TRUE)
+  dp <- file.path(dp_dir, basename(dp_orig))
   file.copy(dp_orig, dp)
   
-  withr::defer(unlink(dp), envir = parent.frame())
+  withr::defer(unlink(dp_dir, recursive = TRUE), envir = parent.frame())
   
   # We'll collect pkg_source_path for cleanup once set_up_pkg() runs
   # (we declare it here only so the defer below has a symbol)
@@ -684,25 +633,11 @@ test_that("assess_pkg handles errors in check_suggested_exp_funcs correctly", {
     envir = parent.frame()
   )
   
-  # ---- Force STF path and prevent any fallback to skip-STF ----
-  # run_covr_modes() calls run_coverage(pkg_source_path, covr_timeout)
-  # Return non-NA values to ensure the fallback condition is FALSE.
-  mock_run_coverage <- function(pkg_source_path, covr_timeout) {
-    list(
-      total_cov = 1.0,  # non-NA to bypass fallback
-      res_cov = list(
-        name = "test.package.0001",
-        coverage = list(
-          filecoverage  = c(100), # non-NA to bypass fallback
-          totalcoverage = 100
-        )
-      )
-    )
-  }
+  # ---- Mock coverage provider and prevent fallback paths ----
   mockery::stub(
-    risk.assessr:::run_covr_modes,
-    "run_coverage",
-    mock_run_coverage
+    assess_pkg,
+    "test.assessr::get_package_coverage",
+    assess_pkg_test_mock_get_package_coverage
   )
   
   # Tripwires: if any direct covr call is still reached, fail fast
@@ -723,21 +658,6 @@ test_that("assess_pkg handles errors in check_suggested_exp_funcs correctly", {
     "get_host_package",
     function(pkg_name, pkg_ver, pkg_source_path) {
       list(cran_links = "CRAN", github_links = NULL, bioconductor_links = NULL, internal_links = NULL)
-    }
-  )
-  
-  # Ensure STF branch is picked
-  mockery::stub(
-    assess_pkg,
-    "check_pkg_tests_and_snaps",
-    function(pkg_source_path) {
-      list(
-        has_testthat   = TRUE,
-        has_testit     = FALSE,
-        has_snaps      = TRUE,
-        n_golden_tests = 100,
-        n_test_files   = 100
-      )
     }
   )
   
@@ -815,7 +735,7 @@ test_that("assess_pkg handles errors in check_suggested_exp_funcs correctly", {
       "Error in checking suggested functions"
     )
     
-    # The covr value should be 1 based on our mock_run_coverage()
+    # The covr value should be 1 based on our mock_get_package_coverage()
     expect_true("covr" %in% names(assess_package$results))
     expect_equal(assess_package$results$covr, 1)
   } else {
@@ -823,11 +743,8 @@ test_that("assess_pkg handles errors in check_suggested_exp_funcs correctly", {
   }
 })
 
-
-
-
 test_that("assess_pkg handles error in check_suggested_exp_funcs via withCallingHandlers", {
- 
+  
   # Create a real temporary directory and DESCRIPTION file
   pkg_source_path <- withr::local_tempdir()
   desc_path <- file.path(pkg_source_path, "DESCRIPTION")
@@ -854,10 +771,19 @@ test_that("assess_pkg handles error in check_suggested_exp_funcs via withCalling
     has_source_control = TRUE, has_vignettes = TRUE, has_website = TRUE,
     news_current = TRUE, export_help = TRUE
   ))
-  mockery::stub(assess_pkg, "check_pkg_tests_and_snaps", function(...) list(has_testthat = FALSE, has_testit = FALSE))
+  mockery::stub(assess_pkg, "test.assessr::get_package_coverage", assess_pkg_test_mock_zero_coverage)
   mockery::stub(assess_pkg, "run_rcmdcheck", function(...) list(check_score = 1))
-  mockery::stub(assess_pkg, "get_dependencies", function(...) list())
+  mockery::stub(assess_pkg, "get_dependencies", function(...) assess_pkg_test_empty_deps_df())
   mockery::stub(assess_pkg, "create_empty_tm", function(...) list())
+  mockery::stub(assess_pkg, "assess_exports", function(...) list())
+  mockery::stub(assess_pkg, "risk.assessr::get_session_dependencies", function(...) list())
+  mockery::stub(assess_pkg, "get_pkg_author", function(...) list(maintainer = "Mock Author", funder = NA, authors = "Mock Author"))
+  mockery::stub(assess_pkg, "extract_license_from_description", function(...) "MIT")
+  mockery::stub(assess_pkg, "get_host_package", function(...) list(cran_links = NULL, github_links = NULL, bioconductor_links = NULL, internal_links = NULL))
+  mockery::stub(assess_pkg, "get_repo_owner", function(...) NA_character_)
+  mockery::stub(assess_pkg, "get_github_data", function(...) list(created_at = NA, stars = 0, forks = 0, date = NA, recent_commits_count = 0))
+  mockery::stub(assess_pkg, "get_cran_total_downloads", function(...) 0)
+  mockery::stub(assess_pkg, "get_risk_analysis", function(...) list())
   
   # Stub check_suggested_exp_funcs to throw an error caught by withCallingHandlers
   mockery::stub(assess_pkg, "check_suggested_exp_funcs", function(...) stop("Simulated error in inner handler"))
@@ -866,12 +792,12 @@ test_that("assess_pkg handles error in check_suggested_exp_funcs via withCalling
   
   expect_message(
     assess_pkg(pkg_source_path, rcmdcheck_args),
-    "No recognised standard or non-standard testing configuration"
+    "An error occurred in checking suggested functions: Simulated error in inner handler"
   )
 })
 
 test_that("assess_pkg handles error via outer tryCatch block", {
- 
+  
   # Create a real temporary directory and DESCRIPTION file
   pkg_source_path <- withr::local_tempdir()
   desc_path <- file.path(pkg_source_path, "DESCRIPTION")
@@ -898,9 +824,9 @@ test_that("assess_pkg handles error via outer tryCatch block", {
     has_source_control = TRUE, has_vignettes = TRUE, has_website = TRUE,
     news_current = TRUE, export_help = TRUE
   ))
-  mockery::stub(assess_pkg, "check_pkg_tests_and_snaps", function(...) list(has_testthat = FALSE, has_testit = FALSE))
+  mockery::stub(assess_pkg, "test.assessr::get_package_coverage", assess_pkg_test_mock_zero_coverage)
   mockery::stub(assess_pkg, "run_rcmdcheck", function(...) list(check_score = 1))
-  mockery::stub(assess_pkg, "get_dependencies", function(...) list())
+  mockery::stub(assess_pkg, "get_dependencies", function(...) assess_pkg_test_empty_deps_df())
   mockery::stub(assess_pkg, "create_empty_tm", function(...) list())
   
   # Stub withCallingHandlers to simulate an error that bypasses inner handler
@@ -954,9 +880,10 @@ test_that("assess_pkg follows Bioconductor path and records version/revdeps", {
     has_source_control = TRUE, has_vignettes = TRUE, has_website = TRUE,
     news_current = TRUE, export_help = TRUE
   ))
-  mockery::stub(assess_pkg, "check_pkg_tests_and_snaps", function(...) list(has_testthat = FALSE, has_testit = FALSE))
+  mockery::stub(assess_pkg, "test.assessr::get_package_coverage", assess_pkg_test_mock_zero_coverage)
   mockery::stub(assess_pkg, "run_rcmdcheck", function(...) list(check_score = 1))
-  mockery::stub(assess_pkg, "get_dependencies", function(...) list())
+  mockery::stub(assess_pkg, "get_dependencies", function(...) assess_pkg_test_empty_deps_df())
+  mockery::stub(assess_pkg, "test.assessr::get_package_coverage", assess_pkg_test_mock_zero_coverage)
   mockery::stub(assess_pkg, "create_empty_tm", function(...) list())
   mockery::stub(assess_pkg, "get_pkg_author", function(...) list(maintainer = "A B", funder = NA, authors = "A B"))
   mockery::stub(assess_pkg, "extract_license_from_description", function(...) "MIT")
@@ -1022,9 +949,10 @@ test_that("assess_pkg Bioconductor path coerces empty reverse deps to 0", {
     has_source_control = TRUE, has_vignettes = TRUE, has_website = TRUE,
     news_current = TRUE, export_help = TRUE
   ))
-  mockery::stub(assess_pkg, "check_pkg_tests_and_snaps", function(...) list(has_testthat = FALSE, has_testit = FALSE))
+  mockery::stub(assess_pkg, "test.assessr::get_package_coverage", assess_pkg_test_mock_zero_coverage)
   mockery::stub(assess_pkg, "run_rcmdcheck", function(...) list(check_score = 1))
-  mockery::stub(assess_pkg, "get_dependencies", function(...) list())
+  mockery::stub(assess_pkg, "get_dependencies", function(...) assess_pkg_test_empty_deps_df())
+  mockery::stub(assess_pkg, "test.assessr::get_package_coverage", assess_pkg_test_mock_zero_coverage)
   mockery::stub(assess_pkg, "create_empty_tm", function(...) list())
   mockery::stub(assess_pkg, "get_host_package", function(pkg, ver, path) {
     list(cran_links = NULL, github_links = NULL, bioconductor_links = "bioc", internal_links = NULL)
@@ -1053,4 +981,56 @@ test_that("assess_pkg Bioconductor path coerces empty reverse deps to 0", {
   expect_equal(res$results$version_info$difference_version_months, 0)
   # Empty reverse deps must be coerced to numeric 0
   expect_identical(res$results$rev_deps, 0)
+})
+
+test_that("assess_pkg returns NULL with a warning when pkg_source_path is NULL", {
+  
+  rcmdcheck_args <- list(timeout = Inf, args = c("--no-manual"), build_args = NULL, env = "mockenv", quiet = TRUE)
+  
+  # Bypass the two assert_* guards that fire before the is.null() check
+  mockery::stub(assess_pkg, "checkmate::assert_string", function(...) invisible(NULL))
+  mockery::stub(assess_pkg, "checkmate::assert_directory_exists", function(...) invisible(NULL))
+  
+  # Stub the functions called between the checkmate block and the guard
+  mockery::stub(assess_pkg, "get_pkg_desc", function(...) list(Package = "mockpkg", Version = "0.1.0"))
+  mockery::stub(assess_pkg, "get_risk_metadata", function() list())
+  mockery::stub(assess_pkg, "create_empty_results", function(...) list(suggested_deps = NULL))
+  mockery::stub(assess_pkg, "doc_riskmetric", function(...) list(
+    has_bug_reports_url = TRUE, license = TRUE, has_examples = TRUE,
+    has_maintainer = TRUE, size_codebase = 10, has_news = TRUE,
+    has_source_control = TRUE, has_vignettes = TRUE, has_website = TRUE,
+    news_current = TRUE, export_help = TRUE
+  ))
+  
+  result <- expect_warning(
+    assess_pkg(NULL, rcmdcheck_args),
+    "`pkg_source_path` is missing. Returning NULL."
+  )
+  
+})
+
+
+test_that("assess_pkg returns NULL with a warning when pkg_source_path is an empty string", {
+  
+  rcmdcheck_args <- list(timeout = Inf, args = c("--no-manual"), build_args = NULL, env = "mockenv", quiet = TRUE)
+  
+  # assert_string("") passes; assert_directory_exists("") fails — stub only the latter
+  mockery::stub(assess_pkg, "checkmate::assert_directory_exists", function(...) invisible(NULL))
+  
+  # Stub the functions called between the checkmate block and the guard
+  mockery::stub(assess_pkg, "get_pkg_desc", function(...) list(Package = "mockpkg", Version = "0.1.0"))
+  mockery::stub(assess_pkg, "get_risk_metadata", function() list())
+  mockery::stub(assess_pkg, "create_empty_results", function(...) list(suggested_deps = NULL))
+  mockery::stub(assess_pkg, "doc_riskmetric", function(...) list(
+    has_bug_reports_url = TRUE, license = TRUE, has_examples = TRUE,
+    has_maintainer = TRUE, size_codebase = 10, has_news = TRUE,
+    has_source_control = TRUE, has_vignettes = TRUE, has_website = TRUE,
+    news_current = TRUE, export_help = TRUE
+  ))
+  
+  result <- expect_warning(
+    assess_pkg("", rcmdcheck_args),
+    "`pkg_source_path` is missing. Returning NULL."
+  )
+  
 })

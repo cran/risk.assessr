@@ -3,11 +3,13 @@ test_that("get_exports works correctly with regular functions", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0001_0.1.0.tar.gz", 
+                         "test.package.0001_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -53,11 +55,13 @@ test_that("get_exports works correctly with no R functions", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0005_0.1.0.tar.gz", 
+                         "test.package.0005_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -142,11 +146,13 @@ test_that("get_exports works correctly with nonstandard NAMESPACE", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0012_0.1.0.tar.gz", 
+                         "test.package.0012_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -224,11 +230,13 @@ test_that("get_exports works correctly with S3 functions", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0009_0.1.0.tar.gz", 
+                         "test.package.0009_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -277,11 +285,13 @@ test_that("get_exports works correctly with S4 functions", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0010_0.1.0.tar.gz", 
+                         "test.package.0010_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -328,11 +338,13 @@ test_that("get_exports works correctly with R6 functions", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0011_0.1.0.tar.gz", 
+                         "test.package.0011_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -907,11 +919,13 @@ test_that("get_exports works correctly with regular functions", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0001_0.1.0.tar.gz", 
+                         "test.package.0001_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -957,11 +971,13 @@ test_that("get_exports works correctly with no R functions", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0005_0.1.0.tar.gz", 
+                         "test.package.0005_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -1046,11 +1062,13 @@ test_that("get_exports works correctly with nonstandard NAMESPACE", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0012_0.1.0.tar.gz", 
+                         "test.package.0012_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -1128,11 +1146,13 @@ test_that("get_exports works correctly with S3 functions", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0009_0.1.0.tar.gz", 
+                         "test.package.0009_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -1181,11 +1201,13 @@ test_that("get_exports works correctly with S4 functions", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0010_0.1.0.tar.gz", 
+                         "test.package.0010_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -1232,11 +1254,13 @@ test_that("get_exports works correctly with R6 functions", {
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
   options(repos = r)
+  skip_if_repo_unavailable()
   
   # Copy test package to a temp file
   dp_orig <- system.file("test-data", 
-                         "test.package.0011_0.1.0.tar.gz", 
+                         "test.package.0011_0.1.0.tar.gz",
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   

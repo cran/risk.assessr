@@ -10,7 +10,8 @@ modify_description_file(tar_file)
 \item{tar_file}{A string representing the path to the `.tar.gz` file that contains the R package.}
 }
 \value{
-A string containing the path to the newly created modified `.tar.gz` file.
+A string containing the path to the newly created modified `.tar.gz` file,
+  or the original `tar_file` path unchanged if modification was unnecessary or failed.
 }
 \description{
 This function recreate a `.tar.gz` R package file after modifying its `DESCRIPTION` file

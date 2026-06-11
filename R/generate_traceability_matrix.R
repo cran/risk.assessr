@@ -54,14 +54,7 @@ generate_traceability_matrix <- function(package_name, version = NA, repos = get
   
   # Optional coverage
   if (execute_coverage) {
-    test_pkg_data <- check_pkg_tests_and_snaps(pkg_source_path)
-    if (isTRUE(test_pkg_data$has_testthat) || isTRUE(test_pkg_data$has_testit)) {
-      covr_timeout <- Inf
-      covr_list <- run_coverage(pkg_source_path, covr_timeout)
-    } else {
-      message("No testthat or testit configuration")
-      covr_list <- NULL
-    }
+    covr_list <- test.assessr::get_package_coverage(pkg_source_path, package_installed)
   } else {
     covr_list <- NULL
   }

@@ -16,6 +16,7 @@ test_that("parse deps for tar file works correctly", {
   
   dp <- system.file("test-data", "here-1.0.1.tar.gz", 
                     package = "risk.assessr")
+  skip_if_test_data_missing(dp)
   
   # set up package
   install_list <- set_up_pkg(dp)
@@ -61,6 +62,7 @@ test_that("parse deps for tar file works correctly", {
   dp_orig <- system.file("test-data", 
                          "test.package.0001_0.1.0.tar.gz", 
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -99,13 +101,7 @@ test_that("parse deps for tar file works correctly", {
 })
 
 test_that("parse_dcf_dependencies extracts dependencies when CRAN is available", {
-  # Check CRAN availability
-  cran_status <- capture_cran_warning("http://cran.us.r-project.org", "src/contrib/Meta/archive.rds")
-  
-  skip_if(
-    !is.null(cran_status$message),
-    message = paste("Skipping test because CRAN is not available:", cran_status$message)
-  )
+  skip_if_repo_unavailable(repo = "http://cran.us.r-project.org")
   
   mockery::stub(parse_dcf_dependencies, "remove_base_packages", mock_remove_base)
   

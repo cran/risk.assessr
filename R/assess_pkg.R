@@ -57,10 +57,22 @@ assess_pkg <- function(
   results$news_current <- doc_scores$news_current
   results$export_help <- doc_scores$export_help 
   
-  test_pkg_data <- check_pkg_tests_and_snaps(pkg_source_path)
-  results$tests <- test_pkg_data
+  message(paste0("Getting unit test coverage for ", pkg_name))
   
-  covr_list <- run_covr_modes(pkg_source_path)
+  if (is.null(pkg_source_path) || !nzchar(pkg_source_path)) {
+    warning(paste("`pkg_source_path` is missing. Returning NULL."))
+    return(NULL)
+  } else {
+    package_installed <- TRUE
+  }
+    
+  covr_list <- test.assessr::get_package_coverage(pkg_source_path, 
+                                                  package_installed)
+  
+  message(paste0("Unit test coverage for ", pkg_name, "  finished"))
+  
+  # add test types to results
+  results$tests <- covr_list$test_pkg_data
   
   # add total coverage to results
   results$covr <- covr_list$total_cov

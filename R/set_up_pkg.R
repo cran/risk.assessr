@@ -1,52 +1,38 @@
 #' Creates information on package installation
 #'
-#' @param dp data path and name for the package. 
-#' @param check_type basic R CMD check type - "1" CRAN R CMD check_type - "2"
-#' 
+#' @param package_path Path to the package tarball (.tar.gz).
+#' @param check_type Type of R CMD check: "1" for basic, "2" for CRAN-like.
+#'
 #' @return list with local package install
 #' @examples
 #' \dontrun{
-#' set_up_pkg(path/to/package, "mypackage")
+#' set_up_pkg("path/to/tarball")
 #' }
 #' @export
-set_up_pkg <- function(dp, check_type = "1") {
-  
-  build_vignettes <- TRUE
-  
-  suppressWarnings(pkg_source_path <- unpack_tarball(dp))
-  
-  # check for vignettes folder
-  bv_result <- contains_vignette_folder(dp)
-  
+set_up_pkg <- function(package_path, check_type = "1") {
+  suppressWarnings(pkg_source_path <- unpack_tarball(package_path))
+
   #set up build vignettes for R CMD check
-  if (bv_result == FALSE) {
-    build_vignettes <- TRUE
-  } else {
-    build_vignettes <- FALSE
-  }
-  
+  build_vignettes <- !contains_vignette_folder(package_path)
+
   if (length(pkg_source_path) == 0) {
     package_installed <- FALSE
-    results <- ""
     pkg_source_path <- ""
-    out_dir <- ""
-    build_vignettes <- ""
-  } else { 
-    if (fs::file_exists(pkg_source_path)) {
-      package_installed <- TRUE
-    }  
-  } 
-  
-  if (package_installed == TRUE ) {	
-    
+    build_vignettes <- FALSE
+  } else {
+    package_installed <- fs::file_exists(pkg_source_path)
+  }
+
+  if (package_installed) {
     rcmdcheck_args <- setup_rcmdcheck_args(check_type, build_vignettes)
-  } 
-  
-  install_list <- list(
+  } else {
+    rcmdcheck_args <- NULL
+  }
+
+  list(
     build_vignettes = build_vignettes,
     package_installed = package_installed,
     pkg_source_path = pkg_source_path,
     rcmdcheck_args = rcmdcheck_args
   )
-  return(install_list)
 }

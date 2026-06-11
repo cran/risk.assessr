@@ -4,12 +4,12 @@
 \alias{set_up_pkg}
 \title{Creates information on package installation}
 \usage{
-set_up_pkg(dp, check_type = "1")
+set_up_pkg(package_path, check_type = "1")
 }
 \arguments{
-\item{dp}{data path and name for the package.}
+\item{package_path}{Path to the package tarball (.tar.gz).}
 
-\item{check_type}{basic R CMD check type - "1" CRAN R CMD check_type - "2"}
+\item{check_type}{Type of R CMD check: "1" for basic, "2" for CRAN-like.}
 }
 \value{
 list with local package install
@@ -19,6 +19,6 @@ Creates information on package installation
 }
 \examples{
 \dontrun{
-set_up_pkg(path/to/package, "mypackage")
+set_up_pkg("path/to/tarball")
 }
 }

@@ -24,12 +24,4 @@ any error occurs during the extraction, the function stops and returns an error 
 and 'inst/doc' folders exist, the function returns \code{FALSE}. If the 'vignettes' folder exists and contains 
 at least one .Rmd file, the function returns \code{TRUE}. Otherwise, it returns \code{FALSE}.
 }
-\examples{
-\dontrun{
-  tar_file <- system.file("test-data", "here-1.0.1.tar.gz", 
-   package = "risk.assessr")
-  result <- contains_vignette_folder(tar_file)
-  print(result)
-}
-
-}
+\keyword{internal}

@@ -7,29 +7,25 @@
 assess_exported_functions_docs(pkg_name, pkg_source_path)
 }
 \arguments{
-\item{pkg_name}{Character scalar; package name (must be loadable so exports can be read).}
+\item{pkg_name}{Character scalar; package name (must be loadable).}
 
 \item{pkg_source_path}{Directory path where Rd files can be found by `tools::Rd_db()`.}
 }
 \value{
 A list with:
 \describe{
-  \item{data}{A `data.frame` with columns:
-    \describe{
-      \item{function_name}{Exported function name.}
-      \item{documentation_name}{The Rd topic name (`\\name{}`), or `"No documentation found"`.}
-      \item{documentation_location}{`man/<file>.Rd` if found, otherwise `NA_character_`.}
-    }
-  }
-  \item{documentation_score}{Numeric; percentage of exported functions with an Rd page.}
+  \item{data}{A `data.frame` with columns `function_name`,
+    `documentation_name`, and `documentation_location`.}
+  \item{has_docs_score}{Numeric in \[0, 1\]; fraction of exported functions
+    that have an Rd page.}
 }
 }
 \description{
-Resolves each **exported function** in a package to its Rd page and reports:
-the function name, the Rd topic name (roxygen `@rdname`), and the Rd location.
-Resolution uses the same alias/topic index as `assess_examples()`, so it
-correctly handles functions documented under a shared topic (via `@rdname`)
-and multiple `\\alias{}` entries (e.g., `stringr::str_to_upper` under
-`man/case.Rd`).
+Scans the package Rd database at `pkg_source_path` and resolves exported
+functions to their Rd pages to determine whether documentation exists.
+Resolution supports shared topics and multiple `\\alias{}` entries, and the
+returned data includes only `function_name`, `documentation_name`, and
+`documentation_location`, together with a score representing the fraction of
+exported functions that have any Rd documentation.
 }
 \keyword{internal}

@@ -87,3 +87,36 @@ test_that("finds package name in tar file string", {
   testthat::expect_identical(pkg_disp, "here")
   
 })
+
+test_that("finds package name in Windows backslash path (underscore version)", {
+  pkg_source_path <- "C:\\Users\\user\\R\\test.package.0001_0.1.0.tar.gz"
+  
+  pkg_disp <- risk.assessr::get_pkg_name(pkg_source_path)
+  
+  testthat::expect_true(!is.na(pkg_disp))
+  testthat::expect_identical(length(pkg_disp), 1L)
+  testthat::expect_identical(pkg_disp, "test.package.0001")
+})
+
+
+test_that("finds package name in Windows backslash path (hyphen version)", {
+  pkg_source_path <- "C:\\Users\\user\\R\\here-0.1.0.tar.gz"
+  
+  pkg_disp <- risk.assessr::get_pkg_name(pkg_source_path)
+  
+  testthat::expect_true(!is.na(pkg_disp))
+  testthat::expect_identical(length(pkg_disp), 1L)
+  testthat::expect_identical(pkg_disp, "here")
+})
+
+
+test_that("finds package name in Windows mixed-separator path", {
+  pkg_source_path <- "C:/Users/user/R\\here_0.1.0.tar.gz"
+  
+  pkg_disp <- risk.assessr::get_pkg_name(pkg_source_path)
+  
+  testthat::expect_true(!is.na(pkg_disp))
+  testthat::expect_identical(length(pkg_disp), 1L)
+  testthat::expect_identical(pkg_disp, "here")
+})
+

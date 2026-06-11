@@ -1,5 +1,7 @@
 globalVariables(c(
                   ".data",
+                  ".doc_key",
+                  ".join_key",
                   "Code_script",
                   "code_script",
                   "cov_env",
@@ -13,6 +15,7 @@ globalVariables(c(
                   "description",
                   "descriptions",
                   "documentation",
+                  "documentation_location",
                   "error",
                   "exported_function",
                   "exported_functions",
@@ -20,6 +23,7 @@ globalVariables(c(
                   "functions",
                   "function_body",
                   "function_calls",
+                  "function_name",
                   "function_type",
                   "has_bug_reports_url",
                   "imp_count",

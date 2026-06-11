@@ -99,7 +99,7 @@ here$results$host
 here$risk_analysis
 ```
 
-[More info Here](https://github.com/Sanofi-Public/risk.assessr/blob/gh-pages/articles/define_custom_risk_rules.html)
+[More info Here](https://github.com/pharmaverse/risk.assessr/blob/gh-pages/articles/define_custom_risk_rules.html)
 
 
 
@@ -112,7 +112,7 @@ here$risk_analysis
 here$tm_list
 ```
 
-[More info Here](https://github.com/Sanofi-Public/risk.assessr/blob/gh-pages/articles/Traceability_matrix.html)
+[More info Here](https://github.com/pharmaverse/risk.assessr/blob/gh-pages/articles/Traceability_matrix.html)
 
 
 ## Suggested Imports Review

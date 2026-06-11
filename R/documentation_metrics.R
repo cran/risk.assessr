@@ -28,16 +28,10 @@ assess_examples <- function(pkg_name, pkg_source_path) {
   # Remove only the package-level Rd file (pkgname-package.Rd)
   db <- db[!names(db) %in% paste0(pkg_name, "-package.Rd")]
   
-  # Namespace and exported objects
-  ns <- asNamespace(pkg_name)
-  exported <- getNamespaceExports(ns)
-  
-  # Keep only exported functions
-  is_fun <- function(name) {
-    obj <- try(getExportedValue(ns, name), silent = TRUE)
-    is.function(obj)
-  }
-  exported_funs <- Filter(is_fun, exported)
+  # Exported function names, resilient to the package not being loadable
+  # (e.g. R CMD INSTALL failed on stricter R versions because the package
+  # has no R/ folder). See `get_exported_function_names()`.
+  exported_funs <- get_exported_function_names(pkg_name, pkg_source_path)
   
   if (length(exported_funs) == 0) {
     df <- data.frame(
@@ -291,26 +285,22 @@ extract_examples_text <- function(rd_doc) {
 
 #' Assess documentation coverage for exported functions
 #'
-#' Resolves each **exported function** in a package to its Rd page and reports:
-#' the function name, the Rd topic name (roxygen `@rdname`), and the Rd location.
-#' Resolution uses the same alias/topic index as `assess_examples()`, so it
-#' correctly handles functions documented under a shared topic (via `@rdname`)
-#' and multiple `\\alias{}` entries (e.g., `stringr::str_to_upper` under
-#' `man/case.Rd`).
+#' Scans the package Rd database at `pkg_source_path` and resolves exported
+#' functions to their Rd pages to determine whether documentation exists.
+#' Resolution supports shared topics and multiple `\\alias{}` entries, and the
+#' returned data includes only `function_name`, `documentation_name`, and
+#' `documentation_location`, together with a score representing the fraction of
+#' exported functions that have any Rd documentation.
 #'
-#' @param pkg_name Character scalar; package name (must be loadable so exports can be read).
+#' @param pkg_name Character scalar; package name (must be loadable).
 #' @param pkg_source_path Directory path where Rd files can be found by `tools::Rd_db()`.
 #'
 #' @return A list with:
 #' \describe{
-#'   \item{data}{A `data.frame` with columns:
-#'     \describe{
-#'       \item{function_name}{Exported function name.}
-#'       \item{documentation_name}{The Rd topic name (`\\name{}`), or `"No documentation found"`.}
-#'       \item{documentation_location}{`man/<file>.Rd` if found, otherwise `NA_character_`.}
-#'     }
-#'   }
-#'   \item{documentation_score}{Numeric; percentage of exported functions with an Rd page.}
+#'   \item{data}{A `data.frame` with columns `function_name`,
+#'     `documentation_name`, and `documentation_location`.}
+#'   \item{has_docs_score}{Numeric in \[0, 1\]; fraction of exported functions
+#'     that have an Rd page.}
 #' }
 #'
 #' @keywords internal
@@ -323,22 +313,16 @@ assess_exported_functions_docs <- function(pkg_name, pkg_source_path) {
   # Keep files like "<pkg_name>.Rd" as they may document a function with the same name.
   db <- db[!names(db) %in% paste0(pkg_name, "-package.Rd")]
   
-  # Namespace and exported objects
-  ns <- asNamespace(pkg_name)
-  exported <- getNamespaceExports(ns)
-  
-  # Keep only exported functions
-  is_fun <- function(name) {
-    obj <- try(getExportedValue(ns, name), silent = TRUE)
-    is.function(obj)
-  }
-  exported_funs <- Filter(is_fun, exported)
+  # Exported function names, resilient to the package not being loadable
+  # (e.g. R CMD INSTALL failed on stricter R versions because the package
+  # has no R/ folder). See `get_exported_function_names()`.
+  exported_funs <- get_exported_function_names(pkg_name, pkg_source_path)
   
   # --- Handle packages with NO exported functions ---------------------------
   if (length(exported_funs) == 0) {
     df <- data.frame(
-      function_name = character(0),
-      documentation_name = character(0),
+      function_name          = character(0),
+      documentation_name     = character(0),
       documentation_location = character(0),
       stringsAsFactors = FALSE
     )
@@ -357,8 +341,8 @@ assess_exported_functions_docs <- function(pkg_name, pkg_source_path) {
     hit <- find_rd_for_fun(fun, db, idx)  # -> list(rd, filename) or NULL
     if (is.null(hit)) {
       return(data.frame(
-        function_name = fun,
-        documentation_name = "No documentation found",
+        function_name          = fun,
+        documentation_name     = "No documentation found",
         documentation_location = NA_character_,
         stringsAsFactors = FALSE
       ))
@@ -368,8 +352,8 @@ assess_exported_functions_docs <- function(pkg_name, pkg_source_path) {
     if (is.na(topic) || !nzchar(topic)) topic <- fun
     
     data.frame(
-      function_name = fun,
-      documentation_name = topic,
+      function_name          = fun,
+      documentation_name     = topic,
       documentation_location = file.path("man", hit$filename),
       stringsAsFactors = FALSE
     )
@@ -383,28 +367,106 @@ assess_exported_functions_docs <- function(pkg_name, pkg_source_path) {
   total <- nrow(df)
   doc_score <- if (total > 0) round(sum(has_doc) / total, 2) else 0
   
-  message(sprintf("%s: %.2f%% of exported functions have documentation", 
-                  pkg_name, 
-                  doc_score * 100))
+  message(sprintf("%s: %.2f%% of exported functions have documentation",
+                  pkg_name, doc_score * 100))
   
-  return(list(data = df, 
-              has_docs_score = doc_score))
-  
-}  
+  return(list(data = df, has_docs_score = doc_score))
+}
 
 #' Assess exported functions to namespace
 #'
+#' @description Returns 1L if the package's NAMESPACE declares any exports
+#'   (`export`, `exportClasses`, `exportMethods`, 
+#'   `exportPattern` or `exportClassPatterns`), 0L
+#'   otherwise.
+#'
 #' @param data pkg source path
+#' @return integer scalar: 1L if any exports are declared, 0L otherwise.
 #' @keywords internal
 assess_exports <- function(data) {
   
-  exports <- parseNamespaceFile(basename(data), dirname(data), mustExist = FALSE)$exports
-  if (length(exports) > 0) {
-    export_calc <- 1
-  } else {
-    export_calc <- 0
+  ns_file <- file.path(data, "NAMESPACE")
+  if (!file.exists(ns_file)) return(0L)
+  ns_lines <- readLines(ns_file, warn = FALSE)
+  has_export <- any(grepl(
+    "^\\s*(export|exportClasses|exportMethods|exportPattern|exportClassPattern)\\s*\\(",
+    ns_lines
+  ))
+  if (has_export) { 
+    export_calc <- 1L} 
+  else { 
+    export_calc <-0L
   }
+  
+  return(export_calc)
 } 
+
+#' Parse exported names from a package's NAMESPACE on disk.
+#'
+#' Used as a fallback when the package is not loaded as a namespace
+#' (for example when `R CMD INSTALL` failed because the package has
+#' no R/ folder on stricter R versions).
+#'
+#' @param pkg_source_path Path to the unpacked package source.
+#' @return Character vector of exported names (possibly empty).
+#' @keywords internal
+get_exports_from_source <- function(pkg_source_path) {
+  if (is.null(pkg_source_path) || !nzchar(pkg_source_path) ||
+      !dir.exists(pkg_source_path)) {
+    return(character(0))
+  }
+  ns_file <- file.path(pkg_source_path, "NAMESPACE")
+  if (!file.exists(ns_file)) return(character(0))
+  parsed <- tryCatch(
+    parseNamespaceFile(basename(pkg_source_path),
+                       dirname(pkg_source_path),
+                       mustExist = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(parsed)) return(character(0))
+  # Expand any export patterns against Rd file names in man/
+  pattern_exports <- character(0)
+  if (length(parsed$exportPatterns) > 0) {
+    rd_dir <- file.path(pkg_source_path, "man")
+    if (dir.exists(rd_dir)) {
+      rd_names <- tools::file_path_sans_ext(
+        list.files(rd_dir, pattern = "\\.Rd$")
+      )
+      pattern_exports <- unlist(lapply(parsed$exportPatterns, function(p) {
+        grep(p, rd_names, value = TRUE)
+      }))
+    }
+  }
+  unique(c(parsed$exports, pattern_exports))
+}
+
+#' Get exported function names with a NAMESPACE-source fallback.
+#'
+#' Attempts to obtain exported function names from the installed
+#' namespace. If the namespace is not available - for example when
+#' `R CMD INSTALL` failed because the package has no `R/` folder on
+#' stricter R versions - falls back to parsing `NAMESPACE` from
+#' `pkg_source_path` via [get_exports_from_source()]. In the fallback
+#' path the result includes every declared export, because
+#' function-ness cannot be verified without a loaded namespace.
+#'
+#' @param pkg_name Character scalar; package name.
+#' @param pkg_source_path Path to the unpacked package source.
+#' @return Character vector of exported names (possibly empty).
+#' @keywords internal
+get_exported_function_names <- function(pkg_name, pkg_source_path) {
+  ns <- tryCatch(asNamespace(pkg_name), error = function(e) NULL)
+  if (is.null(ns)) {
+    return(get_exports_from_source(pkg_source_path))
+  }
+  exported <- getNamespaceExports(ns)
+  is_fun <- function(name) {
+    obj <- try(getExportedValue(ns, name), silent = TRUE)
+    is.function(obj)
+  }
+  Filter(is_fun, exported)
+}
+
 
 #' assess_export_help
 #'
@@ -415,7 +477,16 @@ assess_exports <- function(data) {
 #' @keywords internal
 assess_export_help <- function(pkg_name, pkg_source_path) {
   
-  exported_functions <- getNamespaceExports(pkg_name)
+  # Prefer the installed namespace, but fall back to parsing NAMESPACE
+  # from source so packages that fail to install (e.g. no R/ folder on
+  # stricter R versions) still produce a score instead of erroring.
+  exported_functions <- tryCatch(
+    getNamespaceExports(pkg_name),
+    error = function(e) {
+      get_exports_from_source(pkg_source_path)
+    }
+  )
+  
   if (length(exported_functions) > 0) {
     
     # Use get_func_descriptions to retrieve documentation
@@ -504,8 +575,32 @@ assess_description_file_elements <- function(pkg_name, pkg_source_path) {
   }
   
   # Check for source control URL
-  # Pattern includes GitHub Pages URLs (pages.github.io, github.io) and other common source control hosts
-  patterns <- "github\\.com|pages\\.github\\.io|github\\.io|bitbucket\\.org|gitlab\\.com|\\.ac\\.uk|\\.edu\\.au|bioconductor\\.org"
+  # Pattern covers widely-used and historically significant R package hosting platforms:
+  #   - GitHub (including GitHub Pages)
+  #   - GitLab (including self-hosted public instances, e.g. gitlab.opencode.de)
+  #   - Bitbucket
+  #   - R-Forge (https://r-forge.r-project.org/) — historically major R host
+  #   - Codeberg (https://codeberg.org/) — growing FOSS alternative
+  #   - SourceForge (https://sourceforge.net/) — legacy host, still used by some packages
+  #   - Sourcehut (https://sr.ht/) — lightweight forge, used by some R authors
+  #   - Bioconductor
+  #   - Academic / institutional domains (.ac.uk, .edu.au)
+  patterns <- paste(
+    "github\\.com",
+    "pages\\.github\\.io",
+    "github\\.io",
+    "gitlab\\.com",
+    "gitlab\\.",          # self-hosted GitLab instances (e.g. gitlab.opencode.de)
+    "bitbucket\\.org",
+    "r-forge\\.r-project\\.org",
+    "codeberg\\.org",
+    "sourceforge\\.net",
+    "sr\\.ht",
+    "bioconductor\\.org",
+    "\\.ac\\.uk",
+    "\\.edu\\.au",
+    sep = "|"
+  )
   
   # First check URL field
   url_to_check <- desc_elements$URL
@@ -542,6 +637,64 @@ assess_description_file_elements <- function(pkg_name, pkg_source_path) {
   return(desc_elements_scores)
 }
 
+#' Paths to NEWS files for a package source tree
+#'
+#' Searches the same locations and basenames that \code{utils::news} uses for
+#' an installed package (via \code{tools:::.build_news_db}): \code{NEWS.Rd},
+#' \code{NEWS.md}, and extensionless \code{NEWS}. For a source checkout,
+#' those files are collected from the package root, \code{doc/},
+#' \code{vignettes/}, and under \code{inst/} (recursively, including
+#' \code{inst/NEWS} as in \code{tools::news2Rd}).
+#'
+#' @param pkg_source_path Source path of the package.
+#'
+#' @return Character vector of absolute file paths (possibly empty).
+#' @keywords internal
+find_news_files <- function(pkg_source_path) {
+  if (!dir.exists(pkg_source_path)) {
+    return(character(0))
+  }
+  # Same three files as tools:::.build_news_db() for library/<pkg>/
+  news_basenames <- c("NEWS.Rd", "NEWS.md", "NEWS")
+  pick_news <- function(paths) {
+    paths[basename(paths) %in% news_basenames]
+  }
+  out <- character(0)
+  # Package root (non-recursive)
+  out <- c(out, pick_news(list.files(
+    pkg_source_path,
+    full.names = TRUE,
+    include.dirs = FALSE
+  )))
+  # doc/ and vignettes/ (non-recursive)
+  for (sub in c("doc", "vignettes")) {
+    d <- file.path(pkg_source_path, sub)
+    if (dir.exists(d)) {
+      out <- c(out, pick_news(list.files(
+        d,
+        full.names = TRUE,
+        include.dirs = FALSE
+      )))
+    }
+  }
+  # inst/ and all subfolders (recursive)
+  inst <- file.path(pkg_source_path, "inst")
+  if (dir.exists(inst)) {
+    out <- c(out, pick_news(list.files(
+      inst,
+      full.names = TRUE,
+      recursive = TRUE,
+      include.dirs = FALSE
+    )))
+  }
+  out <- unique(out[file.exists(out)])
+  if (length(out) == 0L) {
+    return(character(0))
+  }
+  out <- normalizePath(out, winslash = "/", mustWork = TRUE)
+  return(out)
+}
+
 #' Assess Rd files for news
 #'
 #' @param pkg_name - name of the package 
@@ -551,9 +704,7 @@ assess_description_file_elements <- function(pkg_name, pkg_source_path) {
 #' @keywords internal
 assess_news <- function(pkg_name, pkg_source_path) {
   
-  news <- list.files(pkg_source_path, 
-                     pattern = "^NEWS\\.", 
-                     full.names = TRUE)
+  news <- find_news_files(pkg_source_path)
   
   if (length(news) > 0) {
     message(glue::glue("{pkg_name} has news"))
@@ -563,6 +714,47 @@ assess_news <- function(pkg_name, pkg_source_path) {
     has_news <- 0
   }
   return(has_news)
+}
+
+#' Escape a string for use as a literal inside a Perl regex
+#' @keywords internal
+#' @noRd
+escape_regex <- function(x) {
+  gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", x, perl = TRUE)
+}
+
+#' Whether NEWS lines document the exact package version
+#'
+#' Uses anchored patterns where appropriate and, for free-text \code{name ver}
+#' matches, a suffix guard \code{(?![0-9.])} so \code{1.2} does not match
+#' \code{1.2.3}. Matches \code{utils:::.news_reader_default} conventions:
+#' markdown title lines, \verb{Changes in version}, and \code{pkg ver} spans.
+#'
+#' @keywords internal
+#' @noRd
+news_lines_have_pkg_version <- function(pkg_name, pkg_ver, lines) {
+  e_pkg <- escape_regex(pkg_name)
+  e_ver <- escape_regex(pkg_ver)
+  # After the version token, do not allow a longer numeric version to continue
+  ver_suffix <- "(?![0-9.])"
+  any(
+    grepl(
+      paste0("^#\\s*", e_pkg, "\\s+", e_ver, ver_suffix),
+      lines,
+      perl = TRUE
+    ),
+    grepl(
+      paste0("^Changes in version\\s+", e_ver, ver_suffix),
+      lines,
+      perl = TRUE,
+      ignore.case = TRUE
+    ),
+    grepl(
+      paste0("\\b", e_pkg, "\\s+", e_ver, ver_suffix),
+      lines,
+      perl = TRUE
+    )
+  )
 }
 
 #' Assess Rd files for news
@@ -575,25 +767,23 @@ assess_news <- function(pkg_name, pkg_source_path) {
 #' @keywords internal
 assess_news_current <- function(pkg_name, pkg_ver, pkg_source_path) {
   
-  # get NEWS.md filepath
-  news_path <- file.path(pkg_source_path, "NEWS.md")
+  # Find candidate NEWS files across supported locations
+  news_paths <- find_news_files(pkg_source_path)
   
-  # check news for latest package version
-  if (file.exists(news_path)) {
-    news_content <- readLines(news_path)
-    version_pattern <- paste0("^# ",
-                              pkg_name,
-                              " ",
-                              pkg_ver)
-    version_lines <- grep(version_pattern, 
-                          news_content, 
-                          value = TRUE)
+  if (length(news_paths) == 0) {
+    
+    version_found <- FALSE
   } else {
-    message(glue::glue("{pkg_name} has no news path"))
-    version_lines <- character(0)
+    news_content <- unlist(
+      lapply(news_paths, function(p) readLines(p, warn = FALSE)),
+      use.names = FALSE
+    )
+    version_found <- news_lines_have_pkg_version(pkg_name, 
+                                                 pkg_ver, 
+                                                 news_content)
   }
   
-  if (length(version_lines) == 0) {
+  if (!version_found) {
     message(glue::glue("{pkg_name} has no current news"))
     news_current <- 0
   } else {
@@ -602,7 +792,6 @@ assess_news_current <- function(pkg_name, pkg_ver, pkg_source_path) {
   }
   return(news_current)
 }
-
 
 #' assess codebase size
 #'
@@ -615,35 +804,54 @@ assess_news_current <- function(pkg_name, pkg_ver, pkg_source_path) {
 #' @keywords internal
 assess_size_codebase <- function(pkg_source_path) {
   
-  # create character vector of function files
-  files <- list.files(path = file.path(pkg_source_path, "R"), full.names = T)
-  
-  # define the function for counting code base
-  count_lines <- function(x){
-    # read the lines of code into a character vector
-    code_base <- readLines(x)
+  # Check that package has an R folder
+  scb_possible <- contains_r_folder(pkg_source_path) 
+  # 
+  if (!scb_possible) { 
+    size_codebase <- 0
+  } else {
     
-    # count all the lines
-    n_tot <- length(code_base)
+    # create character vector of function files
+    # (now recursively scans all subdirectories under R/)
+    files <- list.files(
+      path = file.path(pkg_source_path, "R"),
+      full.names = TRUE,
+      recursive = TRUE,
+      include.dirs = FALSE
+    )
     
-    # count lines for roxygen headers starting with #
-    n_head <- length(grep("^#+", code_base))
+    # define the function for counting code base
+    count_lines <- function(x){
+      # read the lines of code into a character vector
+      code_base <- readLines(x, warn = FALSE)
+      
+      # count all the lines
+      n_tot <- length(code_base)
+      
+      # count lines for roxygen headers starting with #
+      n_head <- length(grep("^#+", code_base))
+      
+      # count the comment lines with leading spaces
+      n_comment <- length(grep("^\\s+#+", code_base))
+      
+      # count the line breaks or only white space lines
+      n_break <- length(grep("^\\s*$", code_base))
+      
+      # compute the line of code base
+      n_tot - (n_head + n_comment + n_break)
+    }
     
-    # count the comment lines with leading spaces
-    n_comment <- length(grep("^\\s+#+", code_base))
+    # count number of lines for all functions
+    if (length(files) == 0) {
+      nloc <- integer(0)
+    } else {
+      nloc <- sapply(files, count_lines)
+    }
     
-    # count the line breaks or only white space lines
-    n_break <- length(grep("^\\s*$", code_base))
     
-    # compute the line of code base
-    n_tot - (n_head + n_comment + n_break)
+    # sum the number of lines
+    size_codebase <- sum(nloc)
   }
-  
-  # count number of lines for all functions
-  nloc <- sapply(files, count_lines)
-  
-  # sum the number of lines
-  size_codebase <- sum(nloc)
   
   return(size_codebase)
 }
@@ -819,5 +1027,3 @@ clean_license <- function(x) {
   
   return(base_license_names)
 }
-
-

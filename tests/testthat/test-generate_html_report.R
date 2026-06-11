@@ -476,37 +476,29 @@ test_that("create_file_coverage_df works correctly with toy dataset", {
 
 
 testthat::test_that("generate_coverage_section returns NA-row when file_names is NULL", {
-  # Build file_coverage such that:
-  # - attr(file_coverage, "dimnames")[[1]] returns NULL (so file_names <- NULL)
-  # - No errors occur in grepl("^(/|[A-Za-z]:)", file_names) because we'll stub grepl.
+  # Build file_coverage with NULL dimnames so attr(..., "dimnames")[[1]] == NULL
+  # grepl(pattern, NULL) returns logical(0) -> any(logical(0)) == FALSE, so the
+  # extract_short_path branch is never entered; no stub needed.
   file_coverage_mat <- matrix(
     numeric(0),
     nrow = 0, ncol = 0,
-    dimnames = list(NULL, NULL)  # makes attr(..., "dimnames")[[1]] == NULL
+    dimnames = list(NULL, NULL)
   )
   
   assessment_results <- list(
     covr_list = list(
       res_cov = list(
         coverage = list(
-          totalcoverage = 85.1,   # arbitrary; not used in this test
+          totalcoverage = 85.1,
           filecoverage  = file_coverage_mat
         ),
-        # Force the 'else' branch (not the create_file_coverage_df path)
-        errors = NA,   # will be converted to "No test coverage errors" earlier
-        notes  = NA    # will be converted to "No test coverage notes" earlier
+        errors = NA,
+        notes  = NA
       )
     )
   )
   
-  # Create a stubbed copy of the function to neutralize grepl on NULL file_names
-  fn <- generate_coverage_section
-  
-  # grepl(NULL) would normally error; stub grepl INSIDE the function to always return FALSE
-  mockery::stub(fn, "grepl", function(pattern, x) FALSE)
-  
-  # Call with any pkg_name (glue::glue not hit because grepl returns FALSE)
-  out <- fn(assessment_results, pkg_name = "mypkg")
+  out <- generate_coverage_section(assessment_results, pkg_name = "mypkg")
   
   # Validate the NA-row data.frame
   testthat::expect_s3_class(out, "data.frame")
@@ -525,6 +517,143 @@ testthat::test_that("generate_coverage_section returns NA-row when file_names is
   
   testthat::expect_true(is.na(out$Notes))
   testthat::expect_identical(typeof(out$Notes), "logical")    # plain NA
+})
+
+testthat::test_that("generate_coverage_section shortens full Linux paths via extract_short_path", {
+  # File names are absolute Linux paths; extract_short_path should reduce each
+  # to its last two components, e.g. "/tmp/.../R/myscript.R" -> "R/myscript.R"
+  assessment_results_full_path <- list(
+    covr_list = list(
+      res_cov = list(
+        coverage = list(
+          filecoverage = structure(
+            75,
+            .Dim    = c(1L),
+            .Dimnames = list("/tmp/RtmpXXXXXX/test.package.0001/R/myscript.R")
+          ),
+          totalcoverage = 75
+        ),
+        errors = NA,
+        notes  = NA
+      )
+    )
+  )
+  
+  result <- generate_coverage_section(assessment_results_full_path, pkg_name = "test.package.0001")
+  
+  testthat::expect_s3_class(result, "data.frame")
+  testthat::expect_equal(result$Function[1], "R/myscript.R")
+  testthat::expect_equal(result$Coverage[1], 75)
+  testthat::expect_equal(result$Errors[1],   "No test coverage errors")
+  testthat::expect_equal(result$Notes[1],    "No test coverage notes")
+})
+
+testthat::test_that("multi_framework: returns named list with one entry per framework", {
+  # Stub extract_coverage_df so the test is independent of its internals.
+  # Each call returns a distinct sentinel data.frame identified by a marker column.
+  df_testthat <- data.frame(fw = "testthat", stringsAsFactors = FALSE)
+  df_tinytest <- data.frame(fw = "tinytest", stringsAsFactors = FALSE)
+  
+  call_log <- character(0)
+  
+  fn <- generate_coverage_section
+  mockery::stub(fn, "extract_coverage_df", function(res_cov, pkg_name) {
+    # Identify which framework is being processed by a field we embed in res_cov
+    call_log <<- c(call_log, res_cov$.fw_id)
+    if (res_cov$.fw_id == "testthat") df_testthat else df_tinytest
+  })
+  
+  ar <- list(
+    covr_list = list(
+      multi_framework = TRUE,
+      frameworks      = list("testthat", "tinytest"),
+      results         = list(
+        testthat = list(res_cov = list(.fw_id = "testthat",
+                                       coverage = list(filecoverage = numeric(0),
+                                                       totalcoverage = 80),
+                                       errors = NA, notes = NA)),
+        tinytest = list(res_cov = list(.fw_id = "tinytest",
+                                       coverage = list(filecoverage = numeric(0),
+                                                       totalcoverage = 90),
+                                       errors = NA, notes = NA))
+      )
+    )
+  )
+  
+  out <- fn(ar, pkg_name = "mypkg")
+  
+  # Result must be a named list, not a data.frame
+  testthat::expect_true(is.list(out) && !is.data.frame(out))
+  testthat::expect_identical(names(out), c("testthat", "tinytest"))
+  testthat::expect_equal(length(out), 2L)
+})
+
+testthat::test_that("multi_framework: each list element is the data.frame from extract_coverage_df", {
+  df_fw1 <- data.frame(Function = "R/a.R", Coverage = 80, Errors = "none", Notes = "none",
+                       stringsAsFactors = FALSE)
+  df_fw2 <- data.frame(Function = "R/b.R", Coverage = 90, Errors = "none", Notes = "none",
+                       stringsAsFactors = FALSE)
+  
+  fn <- generate_coverage_section
+  mockery::stub(fn, "extract_coverage_df", function(res_cov, pkg_name) {
+    if (res_cov$.fw_id == "fw1") df_fw1 else df_fw2
+  })
+  
+  ar <- list(
+    covr_list = list(
+      multi_framework = TRUE,
+      frameworks      = list("fw1", "fw2"),
+      results         = list(
+        fw1 = list(res_cov = list(.fw_id = "fw1",
+                                  coverage = list(filecoverage = numeric(0), totalcoverage = 80),
+                                  errors = NA, notes = NA)),
+        fw2 = list(res_cov = list(.fw_id = "fw2",
+                                  coverage = list(filecoverage = numeric(0), totalcoverage = 90),
+                                  errors = NA, notes = NA))
+      )
+    )
+  )
+  
+  out <- fn(ar, pkg_name = "mypkg")
+  
+  # fw1 slot must be exactly df_fw1, fw2 slot exactly df_fw2
+  testthat::expect_identical(out[["fw1"]], df_fw1)
+  testthat::expect_identical(out[["fw2"]], df_fw2)
+})
+
+testthat::test_that("multi_framework: extract_coverage_df is called once per framework with correct res_cov", {
+  received_res_covs <- list()
+  
+  fn <- generate_coverage_section
+  mockery::stub(fn, "extract_coverage_df", function(res_cov, pkg_name) {
+    received_res_covs[[length(received_res_covs) + 1]] <<- res_cov
+    data.frame()
+  })
+  
+  res_cov_a <- list(.fw_id = "alpha", coverage = list(filecoverage = numeric(0), totalcoverage = 70),
+                    errors = NA, notes = NA)
+  res_cov_b <- list(.fw_id = "beta",  coverage = list(filecoverage = numeric(0), totalcoverage = 30),
+                    errors = NA, notes = NA)
+  
+  ar <- list(
+    covr_list = list(
+      multi_framework = TRUE,
+      frameworks      = list("alpha", "beta"),
+      results         = list(
+        alpha = list(res_cov = res_cov_a),
+        beta  = list(res_cov = res_cov_b)
+      )
+    )
+  )
+  
+  fn(ar, pkg_name = "mypkg")
+  
+  # extract_coverage_df must have been called exactly twice
+  testthat::expect_equal(length(received_res_covs), 2L)
+  
+  # First call received alpha's res_cov, second received beta's
+  testthat::expect_identical(received_res_covs[[1]], res_cov_a)
+  testthat::expect_identical(received_res_covs[[2]], res_cov_b)
 })
 
 
@@ -851,6 +980,176 @@ make_stubbed_fun <- function() {
   
   fn
 }
+
+# ---------------------------------------------------------------------------
+# Shared helpers for generate_html_report multi_framework branch tests
+# ---------------------------------------------------------------------------
+
+# Minimal assessment_results for generate_html_report that satisfies
+# checkmate assertions and provides all tm_list fields accessed after the
+# multi_framework if/else block.
+make_mf_assessment <- function(covr_list_override) {
+  list(
+    results  = list(pkg_name = "mypkg", pkg_version = "1.0.0"),
+    covr_list = covr_list_override,
+    tm_list = list(
+      tm = dplyr::tibble(),
+      coverage = list(
+        high_risk   = dplyr::tibble(),
+        medium_risk = dplyr::tibble(),
+        low_risk    = dplyr::tibble()
+      ),
+      function_type = list(
+        defunct      = dplyr::tibble(),
+        imported     = dplyr::tibble(),
+        rexported    = dplyr::tibble(),
+        experimental = dplyr::tibble()
+      )
+    ),
+    check_list = list(check_score = 1)
+  )
+}
+
+# Stub all heavy helpers on a copy of generate_html_report so the test only
+# exercises the multi_framework if/else lines (67-74).  Returns the stubbed
+# function AND a mutable `captured` environment for inspecting call args.
+make_stubbed_html_report <- function() {
+  dummy_df      <- data.frame()
+  dummy_thresh  <- list(high_max = 0.9, medium_max = 0.7, low_max = 0.5)
+  dummy_lic     <- list(high = character(0), medium = character(0), low = character(0))
+  dummy_deps    <- list(deps_df = data.frame(), dep_score = 0,
+                        import_count = 0L, suggest_count = 0L)
+  dummy_revdeps <- list(
+    rev_deps_df      = data.frame(Reverse_dependencies = character(0)),
+    rev_deps_summary = list(rev_deps_no = 0L, rev_deps_score = 0)
+  )
+  dummy_docs <- list(
+    has_examples = data.frame(),
+    has_docs     = data.frame(),
+    doc_metrics  = data.frame(Metric = character(0), Value = character(0))
+  )
+  
+  captured <- new.env(parent = emptyenv())
+  
+  fn <- generate_html_report
+  mockery::stub(fn, "generate_risk_summary",            function(...) dummy_df)
+  mockery::stub(fn, "generate_risk_details",            function(...) dummy_df)
+  mockery::stub(fn, "generate_rcmd_check_section",      function(...) dummy_df)
+  mockery::stub(fn, "generate_coverage_section",        function(...) dummy_df)
+  mockery::stub(fn, "generate_doc_metrics_section",     function(...) dummy_docs)
+  mockery::stub(fn, "generate_pop_metrics_section",     function(...) dummy_df)
+  mockery::stub(fn, "generate_deps_section",            function(...) dummy_deps)
+  mockery::stub(fn, "generate_rev_deps_section",        function(...) dummy_revdeps)
+  mockery::stub(fn, "generate_trace_matrix_section",    function(total_coverage, file_coverage, tm_df) {
+    captured$total_coverage <- total_coverage
+    captured$file_coverage  <- file_coverage
+    dummy_df
+  })
+  mockery::stub(fn, "generate_fg_trace_matrix_section", function(...) dummy_df)
+  mockery::stub(fn, "get_risk_definition",              function(...) list())
+  mockery::stub(fn, "extract_thresholds_by_id",         function(...) list())
+  mockery::stub(fn, "get_max_thresholds",               function(...) dummy_thresh)
+  mockery::stub(fn, "extract_thresholds_by_key",        function(...) list())
+  mockery::stub(fn, "get_license_thresholds",           function(...) dummy_lic)
+  mockery::stub(fn, "dir_exists",                       function(...) TRUE)
+  mockery::stub(fn, "path_abs",                         function(...) "/tmp/report.html")
+  mockery::stub(fn, "system.file",                      function(...) "")
+  mockery::stub(fn, "render",                           function(...) invisible(NULL))
+  
+  list(fn = fn, captured = captured)
+}
+
+testthat::test_that("multi_framework TRUE: total_coverage = total_cov * 100", {
+  fw1_file_cov <- structure(
+    c(80, 60),
+    .Dim      = c(2L),
+    .Dimnames = list(c("R/foo.R", "R/bar.R"))
+  )
+  
+  ar <- make_mf_assessment(list(
+    multi_framework = TRUE,
+    total_cov       = 0.75,
+    frameworks      = list("testthat", "tinytest"),
+    results         = list(
+      testthat = list(res_cov = list(
+        coverage = list(filecoverage = fw1_file_cov, totalcoverage = 75),
+        errors = NA, notes = NA
+      )),
+      tinytest = list(res_cov = list(
+        coverage = list(
+          filecoverage = structure(90, .Dim = c(1L), .Dimnames = list("R/baz.R")),
+          totalcoverage = 90
+        ),
+        errors = NA, notes = NA
+      ))
+    )
+  ))
+  
+  h <- make_stubbed_html_report()
+  withr::with_envvar(c(NOT_CRAN = "true"), h$fn(ar, output_dir = tempdir()))
+  
+  # Line 68: total_cov * 100
+  testthat::expect_equal(h$captured$total_coverage, 75)
+})
+
+testthat::test_that("multi_framework TRUE: file_coverage taken from first framework, not second", {
+  fw1_file_cov <- structure(
+    c(80, 60),
+    .Dim      = c(2L),
+    .Dimnames = list(c("R/foo.R", "R/bar.R"))
+  )
+  fw2_file_cov <- structure(
+    90,
+    .Dim      = c(1L),
+    .Dimnames = list("R/baz.R")
+  )
+  
+  ar <- make_mf_assessment(list(
+    multi_framework = TRUE,
+    total_cov       = 0.75,
+    frameworks      = list("testthat", "tinytest"),
+    results         = list(
+      testthat = list(res_cov = list(
+        coverage = list(filecoverage = fw1_file_cov, totalcoverage = 75),
+        errors = NA, notes = NA
+      )),
+      tinytest = list(res_cov = list(
+        coverage = list(filecoverage = fw2_file_cov, totalcoverage = 90),
+        errors = NA, notes = NA
+      ))
+    )
+  ))
+  
+  h <- make_stubbed_html_report()
+  withr::with_envvar(c(NOT_CRAN = "true"), h$fn(ar, output_dir = tempdir()))
+  
+  # Lines 69-70: first framework ("testthat") filecoverage, NOT "tinytest"
+  testthat::expect_identical(h$captured$file_coverage, fw1_file_cov)
+  testthat::expect_false(identical(h$captured$file_coverage, fw2_file_cov))
+})
+
+testthat::test_that("multi_framework FALSE: falls back to top-level res_cov fields", {
+  file_cov <- structure(
+    55,
+    .Dim      = c(1L),
+    .Dimnames = list("R/single.R")
+  )
+  
+  ar <- make_mf_assessment(list(
+    multi_framework = FALSE,
+    res_cov = list(
+      coverage = list(filecoverage = file_cov, totalcoverage = 55),
+      errors = NA, notes = NA
+    )
+  ))
+  
+  h <- make_stubbed_html_report()
+  withr::with_envvar(c(NOT_CRAN = "true"), h$fn(ar, output_dir = tempdir()))
+  
+  # Line 72-73: else branch
+  testthat::expect_equal(h$captured$total_coverage, 55)
+  testthat::expect_identical(h$captured$file_coverage, file_cov)
+})
 
 testthat::test_that("has_docs list with data + has_docs_score sets data.frame and score attr", {
   hdoc <- list(

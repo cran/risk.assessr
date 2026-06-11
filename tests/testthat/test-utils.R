@@ -2,7 +2,7 @@ test_that("get package description works correctly", {
   
   r = getOption("repos")
   r["CRAN"] = "http://cran.us.r-project.org"
-  options(repos = r)
+  withr::local_options(list(repos = r))
   
   dp <- system.file("test-data", "here-1.0.1.tar.gz", 
                     package = "risk.assessr")
@@ -109,4 +109,84 @@ test_that("get_result_path defaults to check.rds when ext is not specified", {
   
   result <- get_result_path("default/path")
   expect_equal(result, "default/path/mockpkg.check.rds")
+})
+
+test_that("extract_short_path handles forward slashes", {
+  p <- "C:/Users/yyy/AppData/Local/Temp/RtmpXXXX/MASS/R/add.R"
+  expect_equal(extract_short_path(p), "R/add.R")
+})
+
+test_that("extract_short_path handles backslashes", {
+  p <- "C:\\Users\\yyy\\AppData\\Local\\Temp\\RtmpXXXX\\MASS\\R\\add.R"
+  expect_equal(extract_short_path(p), "R/add.R")
+})
+
+test_that("extract_short_path handles mixed separators", {
+  p <- "C:/Users\\yyy/AppData\\Local/Temp/RtmpXXXX/MASS/R/add.R"
+  expect_equal(extract_short_path(p), "R/add.R")
+})
+
+test_that("extract_short_path returns last two components for general paths", {
+  p <- "/opt/projects/pkgname/src/module/file.ext"
+  expect_equal(extract_short_path(p), "module/file.ext")
+})
+
+test_that("extract_short_path handles single-component paths", {
+  p <- "file.ext"
+  expect_equal(extract_short_path(p), "file.ext")
+})
+
+test_that("extract_short_path handles empty string", {
+  p <- ""
+  # strsplit("", "[/\\\\]") returns character(0), function returns ""
+  expect_equal(extract_short_path(p), "")
+})
+
+test_that("extract_short_path handles trailing separator", {
+  # Trailing separator creates an empty last component
+  p1 <- "dir/subdir/"
+  expect_equal(extract_short_path(p1), "subdir/")  # last component is ""
+  
+  p2 <- "dir\\subdir\\"
+  expect_equal(extract_short_path(p2), "subdir/")  # unified separator in output
+})
+
+test_that("extract_short_path works over a vector via vapply", {
+  paths <- c(
+    "C:/A/B/C/D.R",
+    "C:\\A\\B\\C\\E.R",
+    "/A/B/C/F.R",
+    "file.ext"
+  )
+  out <- vapply(paths, extract_short_path, FUN.VALUE = character(1))
+  expect_equal(unname(out), c("C/D.R", "C/E.R", "C/F.R", "file.ext"))
+})
+
+test_that("extract_short_path behavior for NA (optional policy)", {
+  # If you want NA-in -> NA-out, you can wrap it:
+  safe_extract <- function(x) if (is.na(x)) NA_character_ else extract_short_path(x)
+  expect_true(is.na(safe_extract(NA_character_)))
+})
+
+test_that("normalize_code_script_key ignores hyphen, underscore, and case", {
+  expect_equal(
+    normalize_code_script_key(c("R/geom_alluvium.R", "R/geom-alluvium.r")),
+    c("geomalluvium", "geomalluvium")
+  )
+  expect_true(is.na(normalize_code_script_key(NA_character_)))
+})
+
+test_that("camel_to_kebab converts ggproto-style names", {
+  expect_equal(camel_to_kebab("GeomAlluvium"), "geom-alluvium")
+  expect_equal(camel_to_kebab("StatFlow"), "stat-flow")
+})
+
+test_that("build_r_script_lookup maps normalized keys to actual R paths", {
+  mockery::stub(build_r_script_lookup, "dir.exists", function(path) TRUE)
+  mockery::stub(build_r_script_lookup, "list.files", function(path, pattern, full.names) {
+    "geom-alluvium.r"
+  })
+  
+  lookup <- build_r_script_lookup("mock/path")
+  expect_equal(unname(lookup["geomalluvium"]), "R/geom-alluvium.r")
 })

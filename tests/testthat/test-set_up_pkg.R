@@ -1,8 +1,8 @@
-
 test_that("set up package for tar file with default check type", {
   dp_orig <- system.file("test-data", 
                          "test.package.0001_0.1.0.tar.gz", 
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -14,7 +14,7 @@ test_that("set up package for tar file with default check type", {
   # Defer cleanup of unpacked source directory
   withr::defer(unlink(install_list$pkg_source_path, 
                       recursive = TRUE, force = TRUE), 
-                      envir = parent.frame())
+               envir = parent.frame())
   
   expect_identical(length(install_list), 4L)
   expect_true(checkmate::check_list(install_list, any.missing = FALSE))
@@ -27,6 +27,7 @@ test_that("set up package for tar file with default check type", {
 test_that("set up package for tar file with check type 1", {
   dp_orig <- system.file("test-data", "test.package.0001_0.1.0.tar.gz", 
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -49,13 +50,14 @@ test_that("set up package for tar file with check type 1", {
 test_that("set up package for tar file with check type 1", {    
   dp <- system.file("test-data", "test.package.0001_0.1.0.tar.gz", 
                     package = "risk.assessr")
+  skip_if_test_data_missing(dp)
   
   check_type <- "1"
   
   # set up package
   install_list <- set_up_pkg(dp, 
-                                                 check_type 
-                                                 )
+                             check_type 
+  )
   
   expect_identical(length(install_list), 4L)
   
@@ -75,6 +77,7 @@ test_that("set up package for tar file with check type 2", {
   dp_orig <- system.file("test-data", 
                          "test.package.0001_0.1.0.tar.gz", 
                          package = "risk.assessr")
+  skip_if_test_data_missing(dp_orig)
   dp <- tempfile(fileext = ".tar.gz")
   file.copy(dp_orig, dp)
   
@@ -96,34 +99,22 @@ test_that("set up package for tar file with check type 2", {
 
 
 test_that("set_up_pkg handles zero-length pkg_source_path", {
-  # Create a dummy tarball path
   dp <- tempfile(fileext = ".tar.gz")
   file.create(dp)
   withr::defer(unlink(dp), envir = parent.frame())
   
-  # Stub unpack_tarball to simulate failure
   mockery::stub(set_up_pkg, "unpack_tarball", function(...) character(0))
-  
-  # Stub contains_vignette_folder to return FALSE
   mockery::stub(set_up_pkg, "contains_vignette_folder", function(...) FALSE)
-  
-  # Stub setup_rcmdcheck_args to avoid error if called
-  mockery::stub(set_up_pkg, "rcmdcheck_args", 
-                function(...) list(timeout = Inf, 
-                                   args = "--no-manual", 
-                                   build_args = NULL, 
-                                   env = "mockenv", 
-                                   quiet = TRUE))
   
   install_list <- set_up_pkg(dp)
   
   expect_identical(length(install_list), 4L)
-  expect_true(checkmate::check_list(install_list, any.missing = FALSE))
-  expect_true(checkmate::check_list(install_list, 
-                                    types = c("logical", 
-                                              "character", 
-                                              "list",
-                                              "function")))
+  expect_false(install_list$package_installed)
+  expect_null(install_list$rcmdcheck_args)
+  expect_true(checkmate::check_list(install_list,
+                                    types = c("logical",
+                                              "character",
+                                              "NULL")))
 })
 
 
@@ -132,21 +123,14 @@ test_that("set_up_pkg sets build_vignettes to TRUE when bv_result is FALSE", {
   file.create(dp)
   withr::defer(unlink(dp), envir = parent.frame())
   
-  # Stub unpack_tarball to return a dummy path
   mockery::stub(set_up_pkg, "unpack_tarball", function(...) "mock/path")
-  
-  # Stub contains_vignette_folder to return FALSE
   mockery::stub(set_up_pkg, "contains_vignette_folder", function(...) FALSE)
-  
-  # Stub fs::file_exists to return TRUE
   mockery::stub(set_up_pkg, "fs::file_exists", function(...) TRUE)
-  
-  # Stub setup_rcmdcheck_args to return dummy args
-  mockery::stub(set_up_pkg, "rcmdcheck_args", 
-                function(...) list(timeout = Inf, 
-                                   args = "--no-manual", 
-                                   build_args = NULL, 
-                                   env = "mockenv", 
+  mockery::stub(set_up_pkg, "setup_rcmdcheck_args",
+                function(...) list(timeout = Inf,
+                                   args = "--no-manual",
+                                   build_args = NULL,
+                                   env = "mockenv",
                                    quiet = TRUE))
   
   install_list <- set_up_pkg(dp)
@@ -160,24 +144,33 @@ test_that("set_up_pkg sets build_vignettes to FALSE when bv_result is TRUE", {
   file.create(dp)
   withr::defer(unlink(dp), envir = parent.frame())
   
-  # Stub unpack_tarball to return a dummy path
   mockery::stub(set_up_pkg, "unpack_tarball", function(...) "mock/path")
-  
-  # Stub contains_vignette_folder to return TRUE
   mockery::stub(set_up_pkg, "contains_vignette_folder", function(...) TRUE)
-  
-  # Stub fs::file_exists to return TRUE
   mockery::stub(set_up_pkg, "fs::file_exists", function(...) TRUE)
-  
-  # Stub setup_rcmdcheck_args to return dummy args
-  mockery::stub(set_up_pkg, "rcmdcheck_args", 
-                function(...) list(timeout = Inf, 
-                                   args = "--no-manual", 
-                                   build_args = NULL, 
-                                   env = "mockenv", 
+  mockery::stub(set_up_pkg, "setup_rcmdcheck_args",
+                function(...) list(timeout = Inf,
+                                   args = "--no-manual",
+                                   build_args = NULL,
+                                   env = "mockenv",
                                    quiet = TRUE))
   
   install_list <- set_up_pkg(dp)
   
   expect_false(install_list$build_vignettes)
+})
+
+
+test_that("set_up_pkg returns NULL rcmdcheck_args when pkg_source_path does not exist", {
+  dp <- tempfile(fileext = ".tar.gz")
+  file.create(dp)
+  withr::defer(unlink(dp), envir = parent.frame())
+  
+  mockery::stub(set_up_pkg, "unpack_tarball", function(...) "non/existent/path")
+  mockery::stub(set_up_pkg, "contains_vignette_folder", function(...) FALSE)
+  mockery::stub(set_up_pkg, "fs::file_exists", function(...) FALSE)
+  
+  install_list <- set_up_pkg(dp)
+  
+  expect_false(install_list$package_installed)
+  expect_null(install_list$rcmdcheck_args)
 })

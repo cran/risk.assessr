@@ -1,3 +1,5 @@
+# Shared helpers ----------------------------------------------------------------
+
 # risk metrics for package 1
 risk_results_1 <- list(
   pkg_name = "synapser",

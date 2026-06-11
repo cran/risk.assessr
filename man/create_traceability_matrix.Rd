@@ -57,31 +57,11 @@ pkg_desc <- get_pkg_desc(pkg_source_path,
                          fields = c("Package", 
                                     "Version"))
 pkg_name <- pkg_desc$Package
-test_pkg_data <- check_pkg_tests_and_snaps(pkg_source_path)
-
-covr_timeout <- Inf
-
-if (test_pkg_data$has_testthat || test_pkg_data$has_testit) {
-  
-  covr_list <- run_coverage(
-    pkg_source_path,  
-    covr_timeout
-  )    
-} else {
-  message("No testthat or testit configuration")
-  covr_list <- list(
-    total_cov = 0,
-    res_cov = list(
-      name = pkg_name,
-      coverage = list(
-        filecoverage = matrix(0, nrow = 1, dimnames = list("No functions tested")),
-        totalcoverage = 0
-      ),
-      errors = "No testthat or testit configuration",
-      notes = NA
-    )
-  )
-}
+package_installed <- TRUE
+covr_list <- test.assessr::get_package_coverage(
+  pkg_source_path,
+  package_installed
+)
 # run without test coverage   
 tm_list_no_covr <- create_traceability_matrix(pkg_name, 
                                       pkg_source_path,

@@ -30,10 +30,7 @@
 #' @importFrom curl curl_fetch_memory new_handle
 #' @importFrom jsonlite fromJSON
 #' @export
-
-
 get_github_data <- function(owner, repo) {
-  
   message(glue::glue("Checking GitHub data for {owner}/{repo}..."))
   
   empty_response <- list(
@@ -42,7 +39,8 @@ get_github_data <- function(owner, repo) {
     forks = NULL,
     date = NULL,
     recent_commits_count = NULL,
-    open_issues = NULL
+    open_issues = NULL,
+    average_issue_close_time = NULL
   )
   
   if (is.na(owner) || owner == "") {
@@ -104,6 +102,7 @@ get_github_data <- function(owner, repo) {
     recent_commits_count <- 0
   }
   
+  average_issue_close_time <- average_issue_close_time(owner, repo)
   
   result <- list(
     created_at = format(as.Date(created_at), "%Y-%m-%d"),
@@ -111,7 +110,8 @@ get_github_data <- function(owner, repo) {
     forks = forks,
     date = format(todays_date, "%Y-%m-%d"),
     recent_commits_count = recent_commits_count,
-    open_issues = open_issues
+    open_issues = open_issues,
+    average_issue_close_time = average_issue_close_time
   )
   
   return(result)
@@ -320,9 +320,6 @@ get_repo_owner <- function(links, pkg_name) {
 average_issue_close_time <- function(owner, repo, max_pages = 10, per_page = 100,
                                      headers = c(Accept = "application/vnd.github.v3+json")) {
   
-  
-
-
   #headers <- c(Accept = "application/vnd.github.v3+json")
   handle <- curl::new_handle()
   curl::handle_setheaders(handle, .list = headers)
@@ -357,42 +354,44 @@ average_issue_close_time <- function(owner, repo, max_pages = 10, per_page = 100
       return(NULL)
     })
    
-    # ✅ Fix: check that 'issues' is a *data.frame* before looping
-
-
-    if (!is.null(issues$message)) {
-      msg <- tolower(issues$message)
+    # Fix: check that 'issues' is a *data.frame* before looping
+    if (is.null(issues)) break
+    
+    if (is.list(issues) && !is.data.frame(issues) && !is.null(issues$message)) {
+        msg <- tolower(issues$message)
       
-      if (grepl("abuse detection", msg)) {
-        message("GitHub API rate-limited us: ", issues$message)
-      } else if (grepl("not found", msg)) {
-        message("Repository not found: ", issues$message)
-      } else {
-        message("GitHub returned a message: ", issues$message)
-      }
+        if (grepl("abuse detection", msg)) {
+          message("GitHub API rate-limited us: ", issues$message)
+        } else if (grepl("not found", msg)) {
+          message("Repository not found: ", issues$message)
+    } else {
+      message("GitHub returned a message: ", issues$message)
+    }
       
       return(NA)  # <- Clean exit
     }
-    
+   
+    if (is.list(issues) && length(issues) == 0) break 
     
     if (!is.data.frame(issues)) {
       message("Issues data is not a data frame. Skipping.")
       return(NA)
     }
     
-    
-    # Loop through rows safely
+    # Loop through rows safely — access columns directly to avoid list-column
+    # issues that arise from single-row data.frame subsetting
+    has_pr_col <- "pull_request.url" %in% names(issues)
     for (i in seq_len(nrow(issues))) {
-      issue <- issues[i, ]
-      # Safely check for pull_request column
-      if (!is.na(issue[["pull_request.url"]]) && nzchar(issue[["pull_request.url"]])) next
-      if (is.na(issue$created_at) || is.na(issue$closed_at)) next
-
-      created <- as.POSIXct(issue$created_at, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
-      closed  <- as.POSIXct(issue$closed_at,  format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
-      
+      if (has_pr_col) {
+        pr_url <- issues[["pull_request.url"]][[i]]
+        if (isTRUE(!is.na(pr_url) && nzchar(pr_url))) next
+      }
+      created_at <- issues[["created_at"]][[i]]
+      closed_at  <- issues[["closed_at"]][[i]]
+      if (!isTRUE(!is.na(created_at)) || !isTRUE(!is.na(closed_at))) next
+      created <- as.POSIXct(created_at, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+      closed  <- as.POSIXct(closed_at,  format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
       if (is.na(created) || is.na(closed)) next
-
       durations <- c(durations, as.numeric(difftime(closed, created, units = "hours")))
     }
     

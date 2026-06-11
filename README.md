@@ -1,6 +1,6 @@
 # risk.assessr
 
-<a><img src="man/figures/logo.png" align="right" height="138"/></a>
+<a class="readme-logo"><img src="man/figures/logo.png" align="right" height="138" alt="risk.assessr logo"/></a>
 
 <!-- badges: start -->
 ![R-CMD-check](https://img.shields.io/badge/R%20CMD%20check-Passing-brightgreen.svg)
@@ -42,16 +42,17 @@ This package executes the following tasks:
 
 ## Installation
 
-Install from GitHub:
+From Sanofi repo:
 
 ```r
-remotes::install_github("Sanofi-Public/risk.assessr")
+options(repos="https://cloud.r-project.org")
+install.packages("risk.assessr")
 ```
 
-Or from CRAN, when published:
+Development version:
 
-```r
-install.packages("risk.assessr")
+```r         
+devtools::install_github("pharmaverse/risk.assessr")
 ```
 
 ## Usage
@@ -66,11 +67,7 @@ To assess your package, do the following steps:
 
 
 ``` r
-options(repos = c(
-  RSPM = "https://cloud.r-project.org",
-  INTERNAL = "https://cloud.r-project.org",
-  INTERNAL_RSPM = "https://cloud.r-project.org"
-))
+options(repos="https://cloud.r-project.org")
 
 library(risk.assessr)
 
@@ -130,8 +127,6 @@ Note: This process can be very time-consuming and is recommended to be performed
    **Presenter:** Edward Gillian  
    **Authors:** Edward Gillian, Hugo Bottois, Paulin Charliquart, Andre Couturier    
    **Company:** Sanofi  
-   **Materials / Status:**  
-   - *Ongoing*
 
 4. **Conference:** R/Pharma 2025 APAC  
    **Location:** Online    
@@ -140,13 +135,10 @@ Note: This process can be very time-consuming and is recommended to be performed
    **Presenter:** Hugo Bottois  
    **Authors:** Edward Gillian, Hugo Bottois, Paulin Charliquart, Andre Couturier  
    **Company:** Sanofi  
-   **Materials / Status:**    
-   - *Ongoing*
-
 
 ## Citation
 
-Gillian E, Bottois H, Charliquart P, Couturier A (2025). risk.assessr: Assessing Package Risk Metrics. R package version 2.0.0, <https://sanofi-public.github.io/risk.assessr/>.
+Gillian E, Bottois H, Charliquart P, Couturier A (2025). risk.assessr: Assessing Package Risk Metrics. R package version 2.0.0, <https://probable-chainsaw-kgro2o7.pages.github.io/>.
 
 ```         
 @Manual{,
@@ -154,7 +146,7 @@ Gillian E, Bottois H, Charliquart P, Couturier A (2025). risk.assessr: Assessing
   author = {Edward Gillian and Hugo Bottois and Paulin Charliquart and Andre Couturier},
   year = {2025},
   note = {R package version 2.0.0},
-  url = {https://sanofi-public.github.io/risk.assessr/},
+  url = {https://probable-chainsaw-kgro2o7.pages.github.io/},
 }
 ```
 

@@ -22,19 +22,4 @@ for specific patterns that indicate more serious issues. If any of these pattern
 the corresponding notes are reclassified as errors by moving them from the `notes` field
 to the `errors` field.
 }
-\examples{
-\donttest{
-pkg_name <- "foo"
-res_check <- list(
-  notes = c("'foo' import not declared from: 'bar'",
-            "Namespace in Imports field not imported from: 'baz'",
-            "no visible global function definition for 'qux'",
-            "some harmless note"),
-  warnings = character(0),
-  errors = character(0)
-)
-updated <- check_forbidden_notes(res_check, pkg_name)
-print(updated$errors)  # Should include the first three notes
-print(updated$notes)   # Should include only the harmless note
-}
-}
+\keyword{internal}

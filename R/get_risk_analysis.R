@@ -101,7 +101,6 @@ extract_risk_inputs <- function(flat_data) {
 #' risk_rule <- get_risk_definition()
 #' print(risk_rule)
 #' @export
-#' @export
 get_risk_definition <- function() {
   opt <- getOption("risk.assessr.risk_definition")
   

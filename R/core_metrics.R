@@ -77,23 +77,7 @@ run_rcmdcheck <- function(pkg_source_path, rcmdcheck_args) {
 #' @return A modified version of `res_check` where certain notes matching forbidden patterns
 #'   are moved to the `errors` field.
 #'
-#' @export
-#'
-#' @examples
-#' \donttest{
-#' pkg_name <- "foo"
-#' res_check <- list(
-#'   notes = c("'foo' import not declared from: 'bar'",
-#'             "Namespace in Imports field not imported from: 'baz'",
-#'             "no visible global function definition for 'qux'",
-#'             "some harmless note"),
-#'   warnings = character(0),
-#'   errors = character(0)
-#' )
-#' updated <- check_forbidden_notes(res_check, pkg_name)
-#' print(updated$errors)  # Should include the first three notes
-#' print(updated$notes)   # Should include only the harmless note
-#' }
+#' @keywords internal
 check_forbidden_notes <- function(res_check, pkg_name) {
   if (is.null(res_check$notes) || length(res_check$notes) == 0) {
     message(glue::glue("No forbidden notes for {pkg_name}"))
@@ -124,92 +108,4 @@ check_forbidden_notes <- function(res_check, pkg_name) {
   
   return(res_check)
 }
-
-#' Run covr and potentially save results to disk
-#'
-#' @param pkg_source_path package installation directory
-#' @param timeout Timeout to pass to [callr::r_safe()] when running covr.
-#'
-#'
-#' @return list with total coverage and function coverage
-#' @keywords internal
-run_coverage <- function(pkg_source_path, timeout = Inf) {
-  
-  pkg_name <- basename(pkg_source_path)
-  
-  message(glue::glue("running code coverage for {pkg_name}"))
-  
-  # run covr
-  res_cov <- tryCatch({
-    coverage_list <- run_covr(pkg_source_path, timeout)
-    
-    # If no testable functions are found in the package, `filecoverage` and `totalcoverage`
-    # will yield logical(0) and NaN respectively. Coerce to usable format
-    if(is.na(coverage_list$totalcoverage)){
-      if(rlang::is_empty(coverage_list$filecoverage) && is.logical(coverage_list$filecoverage)){
-        coverage_list$totalcoverage <- 0
-        notes <- "no testable functions found"
-      }else{
-        message(glue::glue("Total coverage returned NaN. This likely means the package had non-standard characteristics."))
-        notes <- NA
-      }
-    }else{
-      notes <- NA
-    }
-    
-    list(name = pkg_name, coverage = coverage_list, errors = NA, notes = notes)
-  },
-  error = function(cond){
-    coverage_list <- list(filecoverage = NA, totalcoverage = NA_integer_)
-    list(
-      name = pkg_name, coverage = coverage_list,
-      errors = cond,
-      notes = NA
-    )
-  })
-  
-  if(is.na(res_cov$coverage$totalcoverage)) {
-    message(glue::glue("code coverage for {pkg_name} unsuccessful"))
-  } else {
-    message(glue::glue("code coverage for {pkg_name} successful"))
-  }  
-  
-  # return total coverage as fraction
-  total_cov <- as.numeric(res_cov$coverage$totalcoverage/100)
-  
-  if(is.na(total_cov)){
-    message(glue::glue("R coverage for {pkg_name} failed. Read in the covr output to see what went wrong: "))
-  }
-  
-  if(!is.na(res_cov$notes)){
-    message(glue::glue("R coverage for {pkg_name} had notes: {res_cov$notes}"))
-  }
-  
-  covr_list <- list(
-    total_cov = total_cov,
-    res_cov = res_cov
-  )
-  return(covr_list)
-}
-
-#' Run covr in subprocess with timeout
-#'
-#' @param path - path to source file
-#' @param timeout - length of timeout - set to Inf
-#' @keywords internal
-run_covr <- function(path, timeout) {
-  callr::r_safe(
-    function(p) {
-      covr::coverage_to_list(covr::package_coverage(p, type = "tests"))
-    },
-    args = list(path),
-    libpath = .libPaths(),
-    repos = NULL,
-    package = FALSE,
-    user_profile = FALSE,
-    error = "error",
-    timeout = timeout
-  )
-}
-
 

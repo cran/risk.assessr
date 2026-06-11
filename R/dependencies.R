@@ -241,7 +241,8 @@ extract_dependency_package_names <- function(x) {
 #' \code{memoise::memoise()} with a timeout of 30 minutes.
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
+#' # Downloads packages.rds from CRAN (needs network).
 #' pkgs <- cran_packages()
 #' head(rownames(pkgs))
 #' }

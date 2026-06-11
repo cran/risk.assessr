@@ -9,7 +9,13 @@ assess_exports(data)
 \arguments{
 \item{data}{pkg source path}
 }
+\value{
+integer scalar: 1L if any exports are declared, 0L otherwise.
+}
 \description{
-Assess exported functions to namespace
+Returns 1L if the package's NAMESPACE declares any exports
+  (`export`, `exportClasses`, `exportMethods`, 
+  `exportPattern` or `exportClassPatterns`), 0L
+  otherwise.
 }
 \keyword{internal}

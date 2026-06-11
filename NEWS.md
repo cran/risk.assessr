@@ -1,10 +1,38 @@
+# risk.assessr 4.1.0
+
+## New Features
+
+- add CRAN-safe test skip helpers `skip_if_repo_unavailable()` and
+  `skip_if_test_data_missing()` to fix "package_installed not found" failures (#54)
+- refactor `create_traceability_matrix()` to join on a normalized `.join_key`
+  for reliable coverage-to-function matching across path formats (#52)
+
+# risk.assessr 4.0.0
+
+## New Features
+
+ - add test.assessr dependency to process unit test coverage
+ - remove unit test coverage code, docs, tests and dependencies
+ - reorganisation of documentation by topic
+ - check R folder recursively 
+ - check for NEWS in different locations
+ - check different hosting platforms for repos
+ - add and update average_issue_close_time
+ - refactor create_traceability_matrix
+ - refactor check_suggested_exp_funcs
+ - refactor assess_exports
+ - update modify_description unpack_tarball
+ - add skip_if_repo_unavailable to tests
+ - update assess_size_codebase to handle no R folder
+ - update tests to include licenses
+
 # risk.assessr 3.1.1
 
 ## New Features
 
- - patch release includes `risk_assess_pkg()` 
+ - patch release includes `risk_assess_pkg()`
    and `assess_pkg_r_package()` feature to retrieve latest package versions
-   
+
 # risk.assessr 3.1.0
 
 ## New Features

@@ -1,20 +1,12 @@
 test_that("execute_coverage=FALSE runs coverage when tests are present", {
   
-  # Safe stub: copy the fixture to a temp file
-  fake_dl <- function(...) {
-    tmp <- tempfile(fileext = ".tar.gz")
-    file.copy(
-      system.file("test-data", "stringr-1.5.1.tar.gz", 
-                  package = "risk.assessr"),
-      tmp
-    )
-    tmp
-  }
+  # Stub get_package_tarfile() directly. Stubbing its internals
+  # (check_cran_package / remotes::download_version) has no effect because
+  # mockery only intercepts calls made directly in generate_traceability_matrix(),
+  # which would otherwise make a live network request and time out.
+  tar_path <- fake_tar()
+  mockery::stub(generate_traceability_matrix, "get_package_tarfile", function(...) tar_path)
   
-  fake_setup <- function(x) list(package_installed = TRUE, pkg_source_path = tempdir())
-  
-  mockery::stub(generate_traceability_matrix, "check_cran_package", TRUE)
-  mockery::stub(generate_traceability_matrix, "remotes::download_version", fake_dl)
   
   mockery::stub(generate_traceability_matrix, "modify_description_file", function(x) x)
   mockery::stub(generate_traceability_matrix, "set_up_pkg", function(x) {
@@ -24,8 +16,10 @@ test_that("execute_coverage=FALSE runs coverage when tests are present", {
   
   # These should not be consulted for coverage when execute_coverage = FALSE,
   # but we can keep them harmless.
-  mockery::stub(generate_traceability_matrix, "check_pkg_tests_and_snaps", function(path) list(has_testthat=TRUE, has_testit=FALSE))
-  mockery::stub(generate_traceability_matrix, "run_coverage", function(...) stop("should not run when execute_coverage=FALSE"))
+  mockery::stub(
+    generate_traceability_matrix, "test.assessr::get_package_coverage",
+    function(...) stop("should not run when execute_coverage=FALSE")
+  )
   mockery::stub(generate_traceability_matrix, "create_traceability_matrix", function(...) list())
   
   out <- generate_traceability_matrix("stringr", "1.5.1", execute_coverage = FALSE)
@@ -41,8 +35,10 @@ test_that("‘Bioconductor fallback’ case works once a tarball is provided", {
     list(package_installed = TRUE, pkg_source_path = tempdir())
   })
   mockery::stub(generate_traceability_matrix, "install_package_local", TRUE)
-  mockery::stub(generate_traceability_matrix, "check_pkg_tests_and_snaps", function(path) list(has_testthat=FALSE, has_testit=FALSE))
-  mockery::stub(generate_traceability_matrix, "run_coverage", function(...) stop("should not run without tests"))
+  mockery::stub(
+    generate_traceability_matrix, "test.assessr::get_package_coverage",
+    function(...) stop("should not run when execute_coverage=FALSE")
+  )
   mockery::stub(generate_traceability_matrix, "create_traceability_matrix", function(...) "fallback-success")
   
   result <- generate_traceability_matrix("SomePkg")
@@ -57,8 +53,10 @@ test_that("‘Bioconductor direct’ case works once a tarball is provided", {
     list(package_installed = TRUE, pkg_source_path = tempdir())
   })
   mockery::stub(generate_traceability_matrix, "install_package_local", TRUE)
-  mockery::stub(generate_traceability_matrix, "check_pkg_tests_and_snaps", function(path) list(has_testthat=FALSE, has_testit=FALSE))
-  mockery::stub(generate_traceability_matrix, "run_coverage", function(...) stop("should not run without tests"))
+  mockery::stub(
+    generate_traceability_matrix, "test.assessr::get_package_coverage",
+    function(...) stop("should not run when execute_coverage=FALSE")
+  )
   mockery::stub(generate_traceability_matrix, "create_traceability_matrix", function(...) "bioc-success")
   
   result <- generate_traceability_matrix("Biobase")
@@ -73,8 +71,10 @@ test_that("‘internal mirror’ case works once a tarball is provided", {
     list(package_installed = TRUE, pkg_source_path = tempdir())
   })
   mockery::stub(generate_traceability_matrix, "install_package_local", TRUE)
-  mockery::stub(generate_traceability_matrix, "check_pkg_tests_and_snaps", function(path) list(has_testthat=FALSE, has_testit=FALSE))
-  mockery::stub(generate_traceability_matrix, "run_coverage", function(...) stop("should not run without tests"))
+  mockery::stub(
+    generate_traceability_matrix, "test.assessr::get_package_coverage",
+    function(...) stop("should not run when execute_coverage=FALSE")
+  )
   mockery::stub(generate_traceability_matrix, "create_traceability_matrix", function(...) "internal-success")
   
   result <- generate_traceability_matrix("InternalPkg")
@@ -101,8 +101,10 @@ test_that("‘CRAN success’ case works once a tarball is provided", {
     list(package_installed = TRUE, pkg_source_path = tempdir())
   })
   mockery::stub(generate_traceability_matrix, "install_package_local", TRUE)
-  mockery::stub(generate_traceability_matrix, "check_pkg_tests_and_snaps", function(path) list(has_testthat=FALSE, has_testit=FALSE))
-  mockery::stub(generate_traceability_matrix, "run_coverage", function(...) stop("should not run without tests"))
+  mockery::stub(
+    generate_traceability_matrix, "test.assessr::get_package_coverage",
+    function(...) stop("should not run when execute_coverage=FALSE")
+  )
   mockery::stub(generate_traceability_matrix, "create_traceability_matrix", function(...) "cran-success")
   
   result <- generate_traceability_matrix("ggplot2")
@@ -142,12 +144,12 @@ test_that("Coverage logic runs when tests are present", {
   })
   mockery::stub(generate_traceability_matrix, "install_package_local", TRUE)
   
-  mockery::stub(generate_traceability_matrix, "check_pkg_tests_and_snaps", function(pkg_source_path) {
-    list(has_testthat = TRUE, has_testit = FALSE)
-  })
-  mockery::stub(generate_traceability_matrix, "run_coverage", function(pkg_source_path, covr_timeout) {
-    list(res_cov = "mock_cov_results")
-  })
+  mockery::stub(
+    generate_traceability_matrix, "test.assessr::get_package_coverage",
+    function(pkg_source_path, package_installed) {
+      list(res_cov = "mock_cov_results")
+    }
+  )
   mockery::stub(generate_traceability_matrix, "create_traceability_matrix", function(pkg_name, pkg_source_path, func_covr, execute_coverage) {
     list(traceability_matrix = "mock_matrix", coverage = func_covr)
   })
@@ -165,12 +167,12 @@ test_that("Coverage logic skips when no tests are present", {
   })
   mockery::stub(generate_traceability_matrix, "install_package_local", TRUE)
   
-  mockery::stub(generate_traceability_matrix, "check_pkg_tests_and_snaps", function(pkg_source_path) {
-    list(has_testthat = FALSE, has_testit = FALSE)
-  })
-  mockery::stub(generate_traceability_matrix, "run_coverage", function(pkg_source_path, covr_timeout) {
-    stop("Should not be called")
-  })
+  mockery::stub(
+    generate_traceability_matrix, "test.assessr::get_package_coverage",
+    function(pkg_source_path, package_installed) {
+      list(res_cov = NULL)
+    }
+  )
   mockery::stub(generate_traceability_matrix, "create_traceability_matrix", function(pkg_name, pkg_source_path, func_covr, execute_coverage) {
     list(traceability_matrix = "mock_matrix", coverage = func_covr)
   })
@@ -188,18 +190,36 @@ test_that("Coverage logic does not run when execute_coverage is FALSE", {
   })
   mockery::stub(generate_traceability_matrix, "install_package_local", TRUE)
   
-  mockery::stub(generate_traceability_matrix, "check_pkg_tests_and_snaps", function(pkg_source_path) {
-    stop("Should not be called")
-  })
-  mockery::stub(generate_traceability_matrix, "run_coverage", function(pkg_source_path, covr_timeout) {
-    stop("Should not be called")
-  })
+  mockery::stub(
+    generate_traceability_matrix, "test.assessr::get_package_coverage",
+    function(...) stop("Should not be called")
+  )
   mockery::stub(generate_traceability_matrix, "create_traceability_matrix", function(pkg_name, pkg_source_path, func_covr, execute_coverage) {
     list(traceability_matrix = "mock_matrix", coverage = func_covr)
   })
   
   result <- generate_traceability_matrix("mockpkg", execute_coverage = FALSE)
   expect_null(result$coverage)
+})
+
+test_that("returns NULL and emits message when package installation fails", {
+  tar_path <- fake_tar()
+  mockery::stub(generate_traceability_matrix, "get_package_tarfile", function(...) tar_path)
+  mockery::stub(generate_traceability_matrix, "modify_description_file", identity)
+  mockery::stub(generate_traceability_matrix, "set_up_pkg", function(x) {
+    list(package_installed = FALSE, pkg_source_path = tempdir())
+  })
+  mockery::stub(generate_traceability_matrix, "install_package_local", FALSE)
+  mockery::stub(
+    generate_traceability_matrix, "create_traceability_matrix",
+    function(...) stop("should not be called when installation fails")
+  )
+  
+  expect_message(
+    result <- generate_traceability_matrix("failpkg", execute_coverage = FALSE),
+    "Package installation failed."
+  )
+  expect_null(result)
 })
 
 test_that("cleans up temp tarball after run", {

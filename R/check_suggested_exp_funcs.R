@@ -39,74 +39,153 @@ create_items_matched <- function(extracted_functions, suggested_exp_func) {
 #' @keywords internal
 process_items_matched <- function(items_matched, suggested_exp_func) {
   
-  # get all unique function names
+  # Unique function names, dropping NA / empty entries. Without this an NA in
+  # suggested_exp_func$functions would become a literal "NA" alternative in
+  # the regex below.
   all_functions <- unique(suggested_exp_func$functions)
+  all_functions <- all_functions[!is.na(all_functions) & nzchar(all_functions)]
+  
+  # Defensive shortcut: if nothing is left to match against, return an empty
+  # result with the expected schema instead of building a degenerate '()' regex.
+  if (length(all_functions) == 0L) {
+    return(dplyr::tibble(
+      source = character(0),
+      suggested_function = character(0),
+      targeted_package = character(0),
+      message = character(0)
+    ))
+  }
+  
+  # Sort longest-first so e.g. "mean_se" wins over "mean" at the same starting
+  # position in ICU alternation (left-to-right semantics).
+  all_functions <- all_functions[order(nchar(all_functions), decreasing = TRUE)]
+  
+  # Quote every name as ICU literal text (\Q...\E) so regex metacharacters
+  # that legitimately appear in R names ('.', '[', '(', '|', '%', '+', '-')
+  # cannot break the alternation. Names like '%in%', '[<-.integer64',
+  # '+.Date', 'as.data.frame' are handled the same way as plain names.
+  #
+  # The boundary uses (?<!\w)...(?!\w) instead of \b. For names composed of
+  # word characters this is exactly equivalent to \b (it still rejects
+  # substring hits like 'mean' inside 'meaningful'). For names whose first or
+  # last character is non-word (e.g. '%in%') \b can never anchor, so dropping
+  # it and using lookarounds is required.
+  escaped <- paste0("\\Q", all_functions, "\\E")
+  alt_pattern <- paste0(
+    "(?<!\\w)(", paste(escaped, collapse = "|"), ")(?!\\w)"
+  )
+  
+  # Per-name anchored pattern reused by the is_assignment / is_parameter
+  # heuristics so they handle special-character names too. The previous
+  # construction (`paste0("\\b", call, "\\b...")`) raised
+  # "invalid regular expression '\\b[data\\b\\s*(<-|=)'" for names beginning
+  # with '[' and similar.
+  anchored <- function(call) paste0("(?<!\\w)\\Q", call, "\\E(?!\\w)")
+  
+  # Cheap word-character test on a single character. Uses base R + a one-char
+  # regex (always trivially valid) so the fallback below does NOT share a
+  # failure mode with the ICU engine that just errored. `\w` in PCRE is
+  # [A-Za-z0-9_]; matching that explicitly avoids any locale surprises.
+  is_word_char <- function(ch) {
+    nzchar(ch) && grepl("[A-Za-z0-9_]", ch, perl = TRUE)
+  }
+  
+  extract_calls <- function(body) {
+    tryCatch(
+      unique(unlist(stringr::str_extract_all(body, alt_pattern))),
+      error = function(e) {
+        warning(
+          paste0(
+            "process_items_matched: regex extraction failed (",
+            conditionMessage(e),
+            "); falling back to fixed-string matching."
+          ),
+          call. = FALSE
+        )
+        # Boundary-preserving fallback. A naive str_detect(body, fixed(fn))
+        # would match `mean` inside `meaningful`, producing false positives
+        # that the downstream is_assignment / is_parameter heuristics do NOT
+        # catch (those heuristics use the same anchored regex as the happy
+        # path and so reject the surrounding context, but the row has
+        # already been added to function_calls and survives both filters
+        # with is_assignment = is_parameter = FALSE).
+        #
+        # To stay consistent with the main alt_pattern's (?<!\w)...(?!\w)
+        # boundary semantics, we locate every literal occurrence of `fn`
+        # and keep the row only if at least one occurrence is flanked by
+        # non-word characters (or string boundaries). All operations here
+        # use literal matching + single-character base-R checks, so the
+        # fallback succeeds even when the main regex engine failed.
+        hits <- vapply(
+          all_functions,
+          function(fn) {
+            locs <- stringr::str_locate_all(body, stringr::fixed(fn))[[1]]
+            if (nrow(locs) == 0L) return(FALSE)
+            any(vapply(seq_len(nrow(locs)), function(i) {
+              s <- locs[i, "start"]
+              e <- locs[i, "end"]
+              before <- if (s == 1L)          "" else substr(body, s - 1L, s - 1L)
+              after  <- if (e == nchar(body)) "" else substr(body, e + 1L, e + 1L)
+              !is_word_char(before) && !is_word_char(after)
+            }, logical(1)))
+          },
+          logical(1)
+        )
+        all_functions[hits]
+      }
+    )
+  }
   
   # step 1 - extract function calls
   processed_items_int <- items_matched %>%
     dplyr::rowwise() %>%
     dplyr::mutate(
-      function_calls = list(unique(unlist(
-        stringr::str_extract_all(
-          suggested_function,
-          paste0("\\b(", paste(all_functions, collapse = "|"), ")\\b")
-        )
-      )))
+      function_calls = list(extract_calls(suggested_function))
     ) %>%
     tidyr::unnest(function_calls) %>%
-    dplyr::filter(function_calls != "") %>% # Filter to keep non-empty function calls
-    dplyr::filter(!grepl("\\(", function_calls)) %>% # Filter to exclude calls with parentheses
+    dplyr::filter(nzchar(function_calls)) %>%
     dplyr::mutate(
-      function_calls = gsub("[^a-zA-Z0-9_]", "", function_calls), # Remove non-alphanumeric characters
-      is_assignment = sapply(function_calls, function(call) {
-        # Caused by error in `grepl()`:
-        # ! invalid regular expression '\b[data\b\s*(<-|=)', reason 'Missing ']''
-        any(grepl(paste0("\\b", call, "\\b\\s*(<-|=)"), suggested_function, perl = TRUE))
-      }),
-      is_parameter = sapply(function_calls, function(call) {
-        any(grepl(paste0("\\(", ".*\\b", call, "\\b", ".*\\)"), suggested_function, perl = TRUE)) &
-          !any(grepl(paste0("\\b", call, "\\b\\s*(<-|=)"), suggested_function, perl = TRUE)) &
-          !any(grepl(paste0("\\b", call, "\\b\\s*\\("), suggested_function, perl = TRUE))
-      })
+      is_assignment = vapply(function_calls, function(call) {
+        any(grepl(
+          paste0(anchored(call), "\\s*(<-|=)"),
+          suggested_function, perl = TRUE
+        ))
+      }, logical(1)),
+      is_parameter = vapply(function_calls, function(call) {
+        a <- anchored(call)
+        in_parens   <- any(grepl(paste0("\\(.*", a, ".*\\)"),
+                                 suggested_function, perl = TRUE))
+        is_assign   <- any(grepl(paste0(a, "\\s*(<-|=)"),
+                                 suggested_function, perl = TRUE))
+        is_call_lhs <- any(grepl(paste0(a, "\\s*\\("),
+                                 suggested_function, perl = TRUE))
+        in_parens & !is_assign & !is_call_lhs
+      }, logical(1))
     ) %>%
     dplyr::ungroup()
   
-  # Ensure is_assignment and is_parameter are logical vectors
-  processed_items_int <- processed_items_int %>%
-    dplyr::mutate(
-      is_assignment = as.logical(is_assignment),
-      is_parameter = as.logical(is_parameter)
-    )
-  
-  # Filter out assignments
-  processed_items_no_assignments <- processed_items_int %>%
-    dplyr::filter(!is_assignment)
-  
-  # Filter out parameters
-  processed_items_no_parameters <- processed_items_no_assignments %>%
-    dplyr::filter(!is_parameter)
-  
-  # Remove the temporary columns
-  processed_items_final <- processed_items_no_parameters %>%
+  # Filter out assignments and named parameters, then drop the helper cols.
+  processed_items_final <- processed_items_int %>%
+    dplyr::filter(!is_assignment, !is_parameter) %>%
     dplyr::select(-is_assignment, -is_parameter)
   
-  # extract function names and set up targeted package and message
+  # function_calls is already the bare function name (one of all_functions),
+  # so use it directly. Do NOT run str_extract(..., "\\w+$") here -- it would
+  # return NA for '%in%' and truncate '[<-.integer64' to 'integer64', causing
+  # the subsequent match() against suggested_exp_func$functions to miss.
   processed_items <- processed_items_final %>%
     dplyr::mutate(
-      suggested_function = stringr::str_extract(function_calls, "\\w+$"),  # Changed: Extract only the function names
-      targeted_package = suggested_exp_func$package[match(function_calls, suggested_exp_func$functions)], 
+      suggested_function = function_calls,
+      targeted_package = suggested_exp_func$package[
+        match(function_calls, suggested_exp_func$functions)
+      ],
       message = "Please check if the targeted package should be in Imports"
     ) %>%
-    # filter(!is.na(source_package)) %>%
     dplyr::distinct(source, suggested_function, targeted_package, message) %>%
     dplyr::select(source, suggested_function, targeted_package, message)
   
   return(processed_items)
 }
-
-
-
-
 
 #' Function to check suggested exported functions
 #'
@@ -119,7 +198,7 @@ process_items_matched <- function(items_matched, suggested_exp_func) {
 #' @param suggested_deps - dependencies in Suggests
 #'
 #' @return - data frame with results of Suggests check
-#' @export
+#' @keywords internal
 check_suggested_exp_funcs <- function(pkg_name, 
                                       pkg_source_path, 
                                       suggested_deps) {
@@ -150,10 +229,10 @@ check_suggested_exp_funcs <- function(pkg_name,
       
       # rename columns in exp_func to match 
       exp_func <- exp_func %>%
-         dplyr::rename(
-           source = exported_function,
-           suggested_function = function_body
-           )
+        dplyr::rename(
+          source = exported_function,
+          suggested_function = function_body
+        )
       
       #rename df for further processing
       func_df <- exp_func
@@ -177,12 +256,12 @@ check_suggested_exp_funcs <- function(pkg_name,
           unlist() %>% all()
         
         if (is_empty) {
-          message(glue::glue("No exported functions from source package {pkg_name}"))
+          message(paste0("No exported functions from source package ", pkg_name))
           suggested_matched_functions <- data.frame(
             source = pkg_name,
             suggested_function = NA,
             targeted_package = NA,
-            message = glue::glue("No exported functions from source package {pkg_name}")
+            message = paste0("No exported functions from source package ", pkg_name)
           ) 
         } else {
           

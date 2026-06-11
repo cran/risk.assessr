@@ -64,8 +64,14 @@ generate_html_report <- function(assessment_results, output_dir = NULL) {
   rev_deps_output <- generate_rev_deps_section(assessment_results)
   
   # set up data for checking if trace_matrix is empty
-  total_coverage <- assessment_results$covr_list$res_cov$coverage$totalcoverage
-  file_coverage <- assessment_results$covr_list$res_cov$coverage$filecoverage
+  if (isTRUE(assessment_results$covr_list$multi_framework)) {
+    total_coverage <- assessment_results$covr_list$total_cov * 100
+    first_fw <- assessment_results$covr_list$frameworks[[1]]
+    file_coverage <- assessment_results$covr_list$results[[first_fw]]$res_cov$coverage$filecoverage
+  } else {
+    total_coverage <- assessment_results$covr_list$res_cov$coverage$totalcoverage
+    file_coverage <- assessment_results$covr_list$res_cov$coverage$filecoverage
+  }
   
   # create general traceability matrix
   general_tm <- assessment_results$tm_list$tm
@@ -417,17 +423,17 @@ generate_rcmd_check_section <- function(assessment_results) {
   
   # Check if errors, warnings, and notes are character(0) and replace with the message
   errors <- assessment_results$check_list$res_check$errors
-  if (length(errors) == 0) {
+  if (length(errors) == 0  || all(is.na(errors)) ) {
     errors <- "No errors"
   }
   
   warnings <- assessment_results$check_list$res_check$warnings
-  if (length(warnings) == 0) {
+  if (length(warnings) == 0 || all(is.na(warnings))) {
     warnings <- "No warnings"
   }
   
   notes <- assessment_results$check_list$res_check$notes
-  if (length(notes) == 0) {
+  if (length(notes) == 0 || all(is.na(notes))) {
     notes <- "No notes"
   }
   
@@ -585,46 +591,40 @@ create_file_coverage_df <- function(file_names, file_coverage, errors, notes) {
   return(file_coverage_df)
 }
 
-#' Generate Coverage Section
+#' Build a file-coverage data frame from a single res_cov object
 #'
-#' @description Generates the Coverage section for the HTML report.
-#' 
-#' @param assessment_results - input data
-#' @param pkg_name - name of the package
-#' 
+#' @param res_cov   The \code{res_cov} list (containing \code{coverage}, \code{errors}, \code{notes}).
+#' @param pkg_name  Name of the package (used to strip temp paths from file names).
+#'
 #' @keywords internal
-generate_coverage_section <- function(assessment_results, pkg_name) {
+extract_coverage_df <- function(res_cov, pkg_name) {
   
-  total_coverage <- assessment_results$covr_list$res_cov$coverage$totalcoverage
-  file_coverage <- assessment_results$covr_list$res_cov$coverage$filecoverage
+  file_coverage <- res_cov$coverage$filecoverage
   
   # Extract file names from the attributes
   file_names <- attr(file_coverage, "dimnames")[[1]]
   
-  
-  # Check if file_names contains full paths
+  # Shorten full paths to last two components (e.g. "R/add.R") 
   if (any(grepl("^(/|[A-Za-z]:)", file_names))) {
-    file_names <- sub(glue::glue("^/tmp/.+?/{pkg_name}/"), "", file_names)
+    file_names <- vapply(file_names, extract_short_path, 
+                         character(1), USE.NAMES = FALSE)
   }
   
   # Handle errors and notes
-  errors <- assessment_results$covr_list$res_cov$errors
+  errors <- res_cov$errors
   if (all(is.na(errors))) {
     errors <- "No test coverage errors"
   }
   
-  notes <- assessment_results$covr_list$res_cov$notes
+  notes <- res_cov$notes
   if (all(is.na(notes))) {
     notes <- "No test coverage notes"
   }
   
   # Create a data frame for file coverage
   if (is.list(errors) && all(c("message", "srcref", "status", "stdout", "stderr", "parent_trace", "call", "procsrcref", "parent") %in% names(errors))) {
-    # Create the file coverage data frame
     file_coverage_df <- create_file_coverage_df(file_names, file_coverage, errors, notes)
   } else {
-    # Handle the case where errors does not have the expected structure
-    
     if (is.null(file_names) || is.null(file_coverage)) {
       file_coverage_df <- data.frame(
         Function = NA_character_,
@@ -645,6 +645,32 @@ generate_coverage_section <- function(assessment_results, pkg_name) {
   }
   
   return(file_coverage_df)
+}
+
+#' Generate Coverage Section
+#'
+#' @description Generates the Coverage section for the HTML report.
+#'   For single-framework packages returns a data frame; for multi-framework
+#'   packages returns a named list of data frames (one per framework).
+#' 
+#' @param assessment_results - input data
+#' @param pkg_name - name of the package
+#' 
+#' @keywords internal
+generate_coverage_section <- function(assessment_results, pkg_name) {
+  
+  if (isTRUE(assessment_results$covr_list$multi_framework)) {
+    frameworks <- assessment_results$covr_list$frameworks
+    return(setNames(
+      lapply(frameworks, function(fw) {
+        extract_coverage_df(assessment_results$covr_list$results[[fw]]$res_cov, pkg_name)
+      }),
+      frameworks
+    ))
+  }
+  
+  covr_extract <- extract_coverage_df(assessment_results$covr_list$res_cov, pkg_name)
+  return(covr_extract)
 }
 
 #' Generate Doc Metrics Section

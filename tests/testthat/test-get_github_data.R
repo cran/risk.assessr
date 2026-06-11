@@ -7,7 +7,8 @@ mock_curl_success <- function(url, handle) {
       created_at = "2015-06-17T09:29:49Z",
       stargazers_count = 5674,
       forks_count = 2040,
-      open_issues_count = 42
+      open_issues_count = 42,
+      average_issue_close_time = 847
     )
     content <- jsonlite::toJSON(repo, auto_unbox = TRUE)
   } else {
@@ -28,7 +29,8 @@ mock_curl_commits_failure <- function(url, handle) {
       created_at = "2015-06-17T09:29:49Z",
       stargazers_count = 5674,
       forks_count = 2040,
-      open_issues_count = 42
+      open_issues_count = 42,
+      average_issue_close_time = 847
     )
     content <- jsonlite::toJSON(repo, auto_unbox = TRUE)
     return(list(content = charToRaw(content)))
@@ -42,23 +44,29 @@ test_that("Valid repository returns correct data", {
   result <- get_github_data("tidyverse", "ggplot2")
   
   expect_type(result, "list")
-  expect_named(result, c('created_at', 'stars', 'forks', 'date', 'recent_commits_count', 'open_issues'))
+  expect_named(result, c('created_at', 'stars', 'forks', 'date', 
+                         'recent_commits_count', 'open_issues', 'average_issue_close_time'))
   expect_equal(result$created_at, "2015-06-17")
   expect_equal(result$stars, 5674)
   expect_equal(result$forks, 2040)
   expect_equal(result$open_issues, 42)
-  expect_equal(result$recent_commits_count, 10) 
+  expect_equal(result$recent_commits_count, 10)
+  skip_if(is.na(result$average_issue_close_time),
+          "GitHub API unavailable or rate-limited")
+  expect_gte(result$average_issue_close_time, 846) 
 })
 
 test_that("Invalid owner returns empty response", {
   result <- get_github_data("", "ggplot2")
   expect_type(result, "list")
-  expect_named(result, c('created_at', 'stars', 'forks', 'date', 'recent_commits_count', 'open_issues'))
+  expect_named(result, c('created_at', 'stars', 'forks', 'date', 
+                         'recent_commits_count', 'open_issues', 'average_issue_close_time'))
   expect_null(result$created_at)
   expect_null(result$stars)
   expect_null(result$forks)
   expect_null(result$recent_commits_count)
   expect_null(result$open_issues)
+  expect_null(result$average_issue_close_time)
 })
 
 test_that("Non-existent repository returns empty response on API failure", {
@@ -70,6 +78,7 @@ test_that("Non-existent repository returns empty response on API failure", {
   expect_null(result$forks)
   expect_null(result$recent_commits_count)
   expect_null(result$open_issues)
+  expect_null(result$average_issue_close_time)
 })
 
 test_that("Commits endpoint failure returns zero recent commits", {
@@ -217,6 +226,143 @@ test_that("average_issue_close_time returns NA when only pull requests returned"
 test_that("average_issue_close_time returns NA when API returns no issues", {
   result <- average_issue_close_time("owner", "repo", max_pages = 1)
   expect_true(is.na(result))
+})
+
+test_that("average_issue_close_time handles issues with no pull_request.url column", {
+  mock_curl_no_pr_col <- function(url, handle) {
+    issues <- list(
+      list(created_at = "2024-01-01T00:00:00Z", closed_at = "2024-01-02T00:00:00Z"),
+      list(created_at = "2024-01-01T00:00:00Z", closed_at = "2024-01-03T00:00:00Z")
+    )
+    list(content = charToRaw(jsonlite::toJSON(issues, auto_unbox = TRUE)))
+  }
+  
+  mockery::stub(average_issue_close_time, "curl::curl_fetch_memory", mock_curl_no_pr_col)
+  result <- average_issue_close_time("owner", "repo", max_pages = 1)
+  expect_equal(result, 36)  # (24h + 48h) / 2
+})
+
+
+test_that("average_issue_close_time stops pagination on empty page and returns collected results", {
+  page1_json <- jsonlite::toJSON(list(
+    list(created_at = "2024-01-01T00:00:00Z", closed_at = "2024-01-02T00:00:00Z")
+  ), auto_unbox = TRUE)
+  page2_json <- jsonlite::toJSON(list(), auto_unbox = TRUE)
+  
+  mock_curl_paginated <- mockery::mock(
+    list(content = charToRaw(page1_json)),
+    list(content = charToRaw(page2_json))
+  )
+  
+  mockery::stub(average_issue_close_time, "curl::curl_fetch_memory", mock_curl_paginated)
+  result <- average_issue_close_time("owner", "repo", max_pages = 5)
+  expect_equal(result, 24)  # 24 hours from page 1
+})
+
+
+test_that("average_issue_close_time breaks and returns NA when curl fetch throws", {
+  mock_curl_error <- function(url, handle) stop("connection refused")
+  
+  mockery::stub(average_issue_close_time, "curl::curl_fetch_memory", mock_curl_error)
+  expect_message(
+    result <- average_issue_close_time("owner", "repo", max_pages = 1),
+    "Failed to fetch page"
+  )
+  expect_true(is.na(result))
+})
+
+
+test_that("average_issue_close_time breaks cleanly when JSON cannot be parsed", {
+  mock_curl_bad_json <- function(url, handle) {
+    list(content = charToRaw("{{not valid json"))
+  }
+  
+  mockery::stub(average_issue_close_time, "curl::curl_fetch_memory", mock_curl_bad_json)
+  expect_message(
+    result <- average_issue_close_time("owner", "repo", max_pages = 1),
+    "Failed to parse page"
+  )
+  expect_true(is.na(result))
+})
+
+
+test_that("average_issue_close_time returns NA on abuse detection rate limit", {
+  mock_curl_rate_limit <- function(url, handle) {
+    content <- jsonlite::toJSON(
+      list(message = "You have triggered an abuse detection mechanism"),
+      auto_unbox = TRUE
+    )
+    list(content = charToRaw(content))
+  }
+  
+  mockery::stub(average_issue_close_time, "curl::curl_fetch_memory", mock_curl_rate_limit)
+  expect_message(
+    result <- average_issue_close_time("owner", "repo", max_pages = 1),
+    "GitHub API rate-limited us"
+  )
+  expect_true(is.na(result))
+})
+
+
+test_that("average_issue_close_time returns NA on generic GitHub API message", {
+  mock_curl_generic_msg <- function(url, handle) {
+    content <- jsonlite::toJSON(list(message = "Bad credentials"), auto_unbox = TRUE)
+    list(content = charToRaw(content))
+  }
+  
+  mockery::stub(average_issue_close_time, "curl::curl_fetch_memory", mock_curl_generic_msg)
+  expect_message(
+    result <- average_issue_close_time("owner", "repo", max_pages = 1),
+    "GitHub returned a message"
+  )
+  expect_true(is.na(result))
+})
+
+
+test_that("average_issue_close_time returns NA for unexpected non-data-frame response", {
+  mock_curl_unexpected <- function(url, handle) {
+    list(content = charToRaw(jsonlite::toJSON(TRUE, auto_unbox = TRUE)))
+  }
+  
+  mockery::stub(average_issue_close_time, "curl::curl_fetch_memory", mock_curl_unexpected)
+  expect_message(
+    result <- average_issue_close_time("owner", "repo", max_pages = 1),
+    "Issues data is not a data frame"
+  )
+  expect_true(is.na(result))
+})
+
+
+test_that("average_issue_close_time skips issues with NA timestamps", {
+  mock_curl_na_timestamps <- function(url, handle) {
+    issues <- list(
+      list(created_at = NA,      closed_at = "2024-01-02T00:00:00Z"),
+      list(created_at = "2024-01-01T00:00:00Z", closed_at = NA),
+      list(created_at = "2024-01-01T00:00:00Z", closed_at = "2024-01-03T00:00:00Z")
+    )
+    list(content = charToRaw(jsonlite::toJSON(issues, auto_unbox = TRUE)))
+  }
+  
+  mockery::stub(average_issue_close_time, "curl::curl_fetch_memory", mock_curl_na_timestamps)
+  result <- average_issue_close_time("owner", "repo", max_pages = 1)
+  expect_equal(result, 48)  # only the third issue: 48 hours
+})
+
+
+test_that("average_issue_close_time skips issues with malformed date strings", {
+  mock_curl_bad_dates <- function(url, handle) {
+    issues <- list(
+      list(created_at = "not-a-date",           closed_at = "also-not-a-date"),
+      list(created_at = "2024-01-01T00:00:00Z", closed_at = "2024-01-02T00:00:00Z")
+    )
+    list(content = charToRaw(jsonlite::toJSON(issues, auto_unbox = TRUE)))
+  }
+  
+  mockery::stub(average_issue_close_time, "curl::curl_fetch_memory", mock_curl_bad_dates)
+  suppressWarnings(
+    result <- average_issue_close_time("owner", "repo", max_pages = 1)
+  )
+  expect_equal(result, 24)  # only the valid issue: 24 hours
 })
 
 

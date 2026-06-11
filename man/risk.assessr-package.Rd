@@ -6,13 +6,15 @@
 \alias{risk.assessr-package}
 \title{risk.assessr: Assessing Package Risk Metrics}
 \description{
+\if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
+
 A reliable and validated tool that captures detailed risk metrics such as R 'CMD' check, test coverage, traceability matrix, documentation, dependencies, reverse dependencies, suggested dependency analysis, repository data, and enhanced reporting for R packages that are local or stored on remote repositories such as GitHub, CRAN, and Bioconductor.
 }
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://sanofi-public.github.io/risk.assessr/}
-  \item Report bugs at \url{https://github.com/Sanofi-Public/risk.assessr/issues}
+  \item \url{https://pharmaverse.github.io/risk.assessr/}
+  \item Report bugs at \url{https://github.com/pharmaverse/risk.assessr/issues}
 }
 
 }
